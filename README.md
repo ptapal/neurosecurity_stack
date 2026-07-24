@@ -19,6 +19,7 @@ Zhang).
 - `inversion.py` - passive inference (gradient reconstruction) attack
 - `run_simulation.py` - runs everything, writes `results/<dataset>.json`
 - `plots.py` - builds the figures in `results/figures/`
+- `Resting State/` - resting-state EO/EC alpha injection scripts split by dataset group
 
 ## Running
 
