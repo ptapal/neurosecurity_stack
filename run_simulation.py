@@ -14,9 +14,11 @@ from fedprox import Client, convergence_bound_rhs, local_optimum, run_dp_fedprox
 from inversion import batch_gradient, reconstruct, reconstruction_error, trivial_baseline_error
 from model import augment, loss as model_loss
 from privacy import clip_l2, epsilon_of_sigma, gaussian_mechanism
-from raw_loader import (SubjectData, list_cho_subjects, list_lee_subjects,
-                         list_won_subjects, list_zhang_subjects, load_cho_subject,
-                         load_lee_subject, load_won_subject, load_zhang_subject)
+from raw_loader import (SubjectData, list_cho_subjects, list_cogbci_subjects,
+                         list_lee_subjects, list_wang_subjects, list_won_subjects,
+                         list_zhang_subjects, load_cho_subject, load_cogbci_ec_subject,
+                         load_cogbci_eo_subject, load_lee_subject, load_wang_ec_subject,
+                         load_wang_eo_subject, load_won_subject, load_zhang_subject)
 from signature import (calibrate_threshold, dp_project, enroll_reference, fingerprint,
                         keygen, make_lsh, make_projection_matrix, mismatch_frac,
                         sign_reading, verify_signature, verify_tamper)
@@ -45,7 +47,30 @@ DATASETS = {
     "lee": (load_lee_subject, list_lee_subjects, 200),
     "won": (load_won_subject, list_won_subjects, 150),
     "zhang": (load_zhang_subject, list_zhang_subjects, 150),
+    "wang_eo": (load_wang_eo_subject, list_wang_subjects, 150),
+    "wang_ec": (load_wang_ec_subject, list_wang_subjects, 150),
+    "cogbci_eo": (load_cogbci_eo_subject, list_cogbci_subjects, 150),
+    "cogbci_ec": (load_cogbci_ec_subject, list_cogbci_subjects, 150),
 }
+
+
+# fixed per-source seeds so subject subsampling is random but reproducible,
+# never "first N by ID" -- same seed for both eo/ec arms of one source so
+# they draw the same subjects, just in the other eye state
+SUBJECT_SAMPLE_SEED = {"cho": 101, "lee": 102, "won": 103, "zhang": 104,
+                        "wang": 105, "cogbci": 106}
+COHORT_SOURCE = {"cho": "cho", "lee": "lee", "won": "won", "zhang": "zhang",
+                  "wang_eo": "wang", "wang_ec": "wang",
+                  "cogbci_eo": "cogbci", "cogbci_ec": "cogbci"}
+
+
+def select_subjects(name, all_ids, n_subjects):
+    if len(all_ids) <= n_subjects:
+        return all_ids
+    source = COHORT_SOURCE[name]
+    rng_sub = np.random.default_rng(SUBJECT_SAMPLE_SEED[source])
+    idx = rng_sub.choice(len(all_ids), size=n_subjects, replace=False)
+    return sorted(np.array(all_ids)[idx].tolist())
 
 
 def split_idx(n, rng, fracs=(0.4, 0.15, 0.15, 0.15, 0.15)):
@@ -304,7 +329,8 @@ def run_passive_inference(prep, clip, w_ref, rng, n_clients=5, n_per_client=2):
 def run_dataset(name, n_subjects, seed=0):
     load_fn, list_fn, max_trials = DATASETS[name]
     rng = np.random.default_rng(seed)
-    ids = list_fn()[:n_subjects]
+    all_ids = list_fn()
+    ids = select_subjects(name, all_ids, n_subjects)
     print(f"  loading {len(ids)} {name} subjects ...")
     subjects = [load_fn(sid, max_trials=max_trials) for sid in ids]
     prep = [prep_subject(s, rng) for s in subjects]
@@ -332,7 +358,7 @@ def main():
     ap.add_argument("--out", type=str, default="results")
     args = ap.parse_args()
 
-    n_subjects = 4 if args.quick else 16
+    n_subjects = 4 if args.quick else 15
     if args.quick:
         global P1_ROUNDS
         P1_ROUNDS = 6
@@ -340,7 +366,8 @@ def main():
     out_dir = Path(__file__).parent / args.out
     out_dir.mkdir(exist_ok=True)
 
-    for name in ("cho", "lee", "won", "zhang"):
+    for name in ("cho", "lee", "won", "zhang",
+                 "wang_eo", "wang_ec", "cogbci_eo", "cogbci_ec"):
         t0 = time.time()
         result = run_dataset(name, n_subjects)
         with open(out_dir / f"{name}.json", "w") as f:

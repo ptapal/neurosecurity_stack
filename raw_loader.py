@@ -23,7 +23,7 @@ CH32 = [
     "Fp1", "AF3", "F7", "F3", "FC1", "FC5", "T7", "C3",
     "CP1", "CP5", "P7", "P3", "Pz", "PO3", "O1", "Oz",
     "O2", "PO4", "P4", "P8", "CP6", "CP2", "C4", "T8",
-    "FC6", "FC2", "F4", "F8", "AF4", "Fp2", "Fz", "Cz",
+    "FC6", "FC2", "F4", "F8", "AF4", "Fp2", "Fz",
 ]
 
 CHO_CH = [
@@ -82,6 +82,9 @@ ZHANG_PRE, ZHANG_POST = 0.1, 0.7
 # code 2 is the rare target, code 1 is common non-target (checked against real trigger counts)
 ZHANG_TARGET = 2
 ZHANG_NONTARGET = 1
+
+
+RS_EPOCH_SEC = 2.0
 
 
 @dataclass
@@ -244,6 +247,98 @@ def load_zhang_subject(subject_id, day="Day_1", max_trials=150, seed=0):
     if max_trials is not None:
         ep_rs, y = ep_rs[:max_trials], y[:max_trials]
     return SubjectData(subject_id, "zhang", ep_rs.astype(np.float32), y)
+
+
+def _epoch_continuous(d, fs, epoch_sec=RS_EPOCH_SEC):
+    win = int(round(epoch_sec * fs))
+    n = d.shape[1] // win
+    return d[:, :n * win].reshape(d.shape[0], n, win).transpose(1, 0, 2)
+
+
+def _load_wang_cond(subject_id, task, tag, max_trials, seed):
+    base = ROOT / "wang_raw" / "ds004148" / subject_id / "ses-session1" / "eeg"
+    vhdr = base / f"{subject_id}_ses-session1_task-{task}_eeg.vhdr"
+    raw = mne.io.read_raw_brainvision(str(vhdr), preload=True, verbose=False)
+    raw = _filt(raw)
+    d = raw.get_data() * 1e6
+    ep = _epoch_continuous(d, FS_OUT)
+
+    n = ep.shape[0]
+    half = n // 2
+    y = np.concatenate([np.zeros(half, dtype=np.int64), np.ones(n - half, dtype=np.int64)])
+
+    rng = np.random.default_rng(seed)
+    idx = rng.permutation(n)
+    ep, y = ep[idx], y[idx]
+    if max_trials is not None:
+        ep, y = ep[:max_trials], y[:max_trials]
+    return SubjectData(subject_id, tag, ep.astype(np.float32), y)
+
+
+def load_wang_eo_subject(subject_id, max_trials=150, seed=0):
+    return _load_wang_cond(subject_id, "eyesopen", "wang_eo", max_trials, seed)
+
+
+def load_wang_ec_subject(subject_id, max_trials=150, seed=0):
+    return _load_wang_cond(subject_id, "eyesclosed", "wang_ec", max_trials, seed)
+
+
+def list_wang_subjects():
+    d = ROOT / "wang_raw" / "ds004148"
+    return sorted(p.name for p in d.iterdir() if p.is_dir() and p.name.startswith("sub-"))
+
+
+def _load_cogbci_cond(subject_id, cond, tag, max_trials, seed):
+    base = ROOT / "cogbci_raw" / "cog_bci" / f"{subject_id}_extract" / subject_id
+    trials, labels = [], []
+    for pos, lab in (("Beg", 0), ("End", 1)):
+        for set_path in sorted(base.rglob(f"RS_{pos}_*.set")):
+            if not set_path.stem.upper().endswith(cond):
+                continue
+            raw = mne.io.read_raw_eeglab(str(set_path), preload=True, verbose=False)
+            raw = _filt(raw)
+            d = raw.get_data() * 1e6
+            ep = _epoch_continuous(d, FS_OUT)
+            trials.append(ep)
+            labels.append(np.full(ep.shape[0], lab, dtype=np.int64))
+
+    pooled = np.concatenate(trials, axis=0)
+    y = np.concatenate(labels)
+    rng = np.random.default_rng(seed)
+    idx = rng.permutation(len(y))
+    pooled, y = pooled[idx], y[idx]
+    if max_trials is not None:
+        pooled, y = pooled[:max_trials], y[:max_trials]
+    return SubjectData(subject_id, tag, pooled.astype(np.float32), y)
+
+
+def load_cogbci_eo_subject(subject_id, max_trials=150, seed=0):
+    return _load_cogbci_cond(subject_id, "EO", "cogbci_eo", max_trials, seed)
+
+
+def load_cogbci_ec_subject(subject_id, max_trials=150, seed=0):
+    return _load_cogbci_cond(subject_id, "EC", "cogbci_ec", max_trials, seed)
+
+
+def list_cogbci_subjects():
+    d = ROOT / "cogbci_raw" / "cog_bci"
+    ids = sorted(p.name[:-len("_extract")] for p in d.iterdir()
+                 if p.is_dir() and p.name.endswith("_extract"))
+    need = set(CH32)
+    ok = []
+    for sid in ids:
+        sets = sorted((d / f"{sid}_extract" / sid).rglob("RS_*.set"))
+        if not sets:
+            continue
+        complete = True
+        for s in sets:
+            raw = mne.io.read_raw_eeglab(str(s), preload=False, verbose=False)
+            if not need.issubset(raw.ch_names):
+                complete = False
+                break
+        if complete:
+            ok.append(sid)
+    return ok
 
 
 def list_cho_subjects():

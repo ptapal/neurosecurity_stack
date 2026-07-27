@@ -5,11 +5,17 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-COLORS = {"cho": "#0072B2", "lee": "#009E73", "won": "#D55E00", "zhang": "#CC79A7"}
+COLORS = {"cho": "#0072B2", "lee": "#009E73", "won": "#D55E00", "zhang": "#CC79A7",
+          "wang_eo": "#E69F00", "wang_ec": "#E69F00",
+          "cogbci_eo": "#56B4E9", "cogbci_ec": "#56B4E9"}
 COLOR_THEORY = "#666666"
 LABELS = {"cho": "Cho (endogenous, MI)", "lee": "Lee (endogenous, MI)",
-          "won": "Won (exogenous, RSVP/P300)", "zhang": "Zhang (exogenous, RSVP/face)"}
-DATASETS = ["cho", "lee", "won", "zhang"]
+          "won": "Won (exogenous, RSVP/P300)", "zhang": "Zhang (exogenous, RSVP/face)",
+          "wang_eo": "Wang (no driver, eyes-open)",
+          "wang_ec": "Wang (no driver, eyes-closed)",
+          "cogbci_eo": "COG-BCI (no driver, eyes-open)",
+          "cogbci_ec": "COG-BCI (no driver, eyes-closed)"}
+DATASETS = ["cho", "lee", "won", "zhang", "wang_eo", "wang_ec", "cogbci_eo", "cogbci_ec"]
 
 RESULTS_DIR = Path(__file__).parent / "results"
 FIG_DIR = RESULTS_DIR / "figures"
@@ -21,8 +27,8 @@ def load(name):
 
 
 def plot_detection_power(data):
-    fig, axes = plt.subplots(1, 4, figsize=(17, 4), sharey=True)
-    for ax, name in zip(axes, DATASETS):
+    fig, axes = plt.subplots(2, 4, figsize=(17, 8), sharey=True)
+    for ax, name in zip(axes.flat, DATASETS):
         d, color = data[name], COLORS[name]
         eps = [s["epsilon"] for s in d["sigma_sweep"]]
         maha = [s["maha_power"] for s in d["sigma_sweep"]]
@@ -38,7 +44,8 @@ def plot_detection_power(data):
         ax.set_ylim(-0.02, 1.02)
         ax.legend(fontsize=7.5, loc="upper left")
         ax.grid(alpha=0.2)
-    axes[0].set_ylabel(r"Detection power $\beta^*$ (at $\alpha_0=0.05$)")
+    for row in axes:
+        row[0].set_ylabel(r"Detection power $\beta^*$ (at $\alpha_0=0.05$)")
     fig.suptitle(r"Pillar 3: $\alpha$-band injection detection power vs. privacy budget")
     fig.tight_layout()
     fig.savefig(FIG_DIR / "pillar3_detection_power.png", dpi=150)
@@ -46,8 +53,8 @@ def plot_detection_power(data):
 
 
 def plot_signature(data):
-    fig, axes = plt.subplots(1, 4, figsize=(17, 4), sharey=True)
-    for ax, name in zip(axes, DATASETS):
+    fig, axes = plt.subplots(2, 4, figsize=(17, 8), sharey=True)
+    for ax, name in zip(axes.flat, DATASETS):
         d, color = data[name], COLORS[name]
         eps = [s["epsilon"] for s in d["sigma_sweep"]]
         far = [s["sig_far"] for s in d["sigma_sweep"]]
@@ -60,7 +67,8 @@ def plot_signature(data):
         ax.set_ylim(-0.02, 1.02)
         ax.legend(fontsize=7.5, loc="center left")
         ax.grid(alpha=0.2)
-    axes[0].set_ylabel("Rate")
+    for row in axes:
+        row[0].set_ylabel("Rate")
     fig.suptitle("Pillar 2: signature fingerprint FAR/FRR vs. privacy budget\n"
                  "(Ed25519 signature itself verifies correctly throughout -- see sig_crypto_valid_*)", fontsize=10)
     fig.tight_layout()
@@ -69,8 +77,8 @@ def plot_signature(data):
 
 
 def plot_convergence_bound(data):
-    fig, axes = plt.subplots(1, 4, figsize=(17, 4))
-    for ax, name in zip(axes, DATASETS):
+    fig, axes = plt.subplots(2, 4, figsize=(17, 8))
+    for ax, name in zip(axes.flat, DATASETS):
         d, color = data[name], COLORS[name]
         checks = d["pillar1"]["convergence_checks"]
         sigmas = [c["sigma"] for c in checks]
@@ -83,7 +91,8 @@ def plot_convergence_bound(data):
         ax.set_title(LABELS[name])
         ax.legend(fontsize=7.5)
         ax.grid(alpha=0.2)
-    axes[0].set_ylabel("Squared gradient norm (log scale)")
+    for row in axes:
+        row[0].set_ylabel("Squared gradient norm (log scale)")
     fig.suptitle("Pillar 1: DP-FedProx-EEG convergence bound, empirical vs. theoretical")
     fig.tight_layout()
     fig.savefig(FIG_DIR / "pillar1_convergence_bound.png", dpi=150)
@@ -91,8 +100,8 @@ def plot_convergence_bound(data):
 
 
 def plot_training_integrity(data):
-    fig, axes = plt.subplots(1, 4, figsize=(17, 4), sharey=True)
-    for ax, name in zip(axes, DATASETS):
+    fig, axes = plt.subplots(2, 4, figsize=(17, 8), sharey=True)
+    for ax, name in zip(axes.flat, DATASETS):
         d, color = data[name], COLORS[name]
         ad = d["pillar1"]["attack_demo"]
         rounds = [h["round"] for h in ad["clean"]]
@@ -109,7 +118,8 @@ def plot_training_integrity(data):
         ax.set_title(f"{LABELS[name]}\n({len(ad['compromised_ids'])}/{ad['n_clients']} clients compromised)", fontsize=9)
         ax.legend(fontsize=6.5)
         ax.grid(alpha=0.2)
-    axes[0].set_ylabel("Global model test accuracy")
+    for row in axes:
+        row[0].set_ylabel("Global model test accuracy")
     fig.suptitle("Pillar 1: training-integrity -- incidental data corruption vs. worst-case crafted-gradient attack")
     fig.tight_layout()
     fig.savefig(FIG_DIR / "pillar1_training_integrity.png", dpi=150)
@@ -117,8 +127,8 @@ def plot_training_integrity(data):
 
 
 def plot_passive_inference(data):
-    fig, axes = plt.subplots(1, 4, figsize=(17, 4), sharey=True)
-    for ax, name in zip(axes, DATASETS):
+    fig, axes = plt.subplots(2, 4, figsize=(17, 8), sharey=True)
+    for ax, name in zip(axes.flat, DATASETS):
         d, color = data[name], COLORS[name]
         res = d["passive_inference"]["results"]
         eps = [r["epsilon"] for r in res]
@@ -132,7 +142,8 @@ def plot_passive_inference(data):
         ax.set_title(LABELS[name])
         ax.legend(fontsize=7.5, loc="upper right")
         ax.grid(alpha=0.2)
-    axes[0].set_ylabel("Reconstruction error (log scale)")
+    for row in axes:
+        row[0].set_ylabel("Reconstruction error (log scale)")
     fig.suptitle("Passive Inference: gradient-inversion reconstruction vs. privacy budget\n"
                  "(below the dotted line = adversary beats trivial guessing = confidentiality violated)", fontsize=10)
     fig.tight_layout()

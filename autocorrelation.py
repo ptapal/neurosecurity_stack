@@ -1,6 +1,5 @@
 import numpy as np
 
-
 def estimate_rho(z_seq, max_lag=5):
     z0 = z_seq - z_seq.mean(axis=0, keepdims=True)
     var = (z0 ** 2).sum(axis=0)
