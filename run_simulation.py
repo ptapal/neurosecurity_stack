@@ -1,105 +1,23 @@
 import argparse
 import json
 import time
-from pathlib import Path
 
 import numpy as np
 
-from attack import inject_alpha
+from cohort import build_clients, load_subjects, prep_subject
+from config import (ALPHA0, ATTACK_STRENGTH, COHORTS, DELTA, EMA_GAMMA, LSH_B, LSH_S,
+                          P1_BATCH_SIZE, P1_FRAC_BAD, P1_LOCAL_STEPS, P1_ROUNDS, P1_SIGMA_DEMO,
+                          P1_SIGMAS_CONV, REPO_ROOT, RIDGE, SIGMAS, TARGET_FRR)
 from detect import (choose_clip_norm, ema_settle, empirical_power, empirical_threshold,
-                     fit_baseline, l2_score, mahalanobis_score, standardize,
-                     theoretical_power_bound)
-from features import encode
-from fedprox import Client, convergence_bound_rhs, local_optimum, run_dp_fedprox_eeg
+                          fit_baseline, l2_score, mahalanobis_score, standardize,
+                          theoretical_power_bound)
+from fedprox import convergence_bound_rhs, estimate_nu2, local_optimum, run_dp_fedprox_eeg
 from inversion import batch_gradient, reconstruct, reconstruction_error, trivial_baseline_error
 from model import augment, loss as model_loss
 from privacy import clip_l2, epsilon_of_sigma, gaussian_mechanism
-from raw_loader import (SubjectData, list_cho_subjects, list_cogbci_subjects,
-                         list_lee_subjects, list_wang_subjects, list_won_subjects,
-                         list_zhang_subjects, load_cho_subject, load_cogbci_ec_subject,
-                         load_cogbci_eo_subject, load_lee_subject, load_wang_ec_subject,
-                         load_wang_eo_subject, load_won_subject, load_zhang_subject)
 from signature import (calibrate_threshold, dp_project, enroll_reference, fingerprint,
-                        keygen, make_lsh, make_projection_matrix, mismatch_frac,
-                        sign_reading, verify_signature, verify_tamper)
-
-FS = 250.0
-ALPHA0 = 0.05
-TARGET_FRR = 0.05
-DELTA = 1e-5
-ATTACK_STRENGTH = 0.5
-EMA_GAMMA = 0.1
-RIDGE = 1e-2
-SIGMAS = np.array([0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 5.0, 8.0])
-
-LSH_S = 8
-LSH_B = 64
-
-P1_ROUNDS = 20
-P1_LOCAL_STEPS = 5
-P1_BATCH_SIZE = 32
-P1_SIGMAS_CONV = [0.1, 0.5, 2.0]
-P1_SIGMA_DEMO = 0.5
-P1_FRAC_BAD = 0.3
-
-DATASETS = {
-    "cho": (load_cho_subject, list_cho_subjects, 200),
-    "lee": (load_lee_subject, list_lee_subjects, 200),
-    "won": (load_won_subject, list_won_subjects, 150),
-    "zhang": (load_zhang_subject, list_zhang_subjects, 150),
-    "wang_eo": (load_wang_eo_subject, list_wang_subjects, 150),
-    "wang_ec": (load_wang_ec_subject, list_wang_subjects, 150),
-    "cogbci_eo": (load_cogbci_eo_subject, list_cogbci_subjects, 150),
-    "cogbci_ec": (load_cogbci_ec_subject, list_cogbci_subjects, 150),
-}
-
-
-# fixed per-source seeds so subject subsampling is random but reproducible,
-# never "first N by ID" -- same seed for both eo/ec arms of one source so
-# they draw the same subjects, just in the other eye state
-SUBJECT_SAMPLE_SEED = {"cho": 101, "lee": 102, "won": 103, "zhang": 104,
-                        "wang": 105, "cogbci": 106}
-COHORT_SOURCE = {"cho": "cho", "lee": "lee", "won": "won", "zhang": "zhang",
-                  "wang_eo": "wang", "wang_ec": "wang",
-                  "cogbci_eo": "cogbci", "cogbci_ec": "cogbci"}
-
-
-def select_subjects(name, all_ids, n_subjects):
-    if len(all_ids) <= n_subjects:
-        return all_ids
-    source = COHORT_SOURCE[name]
-    rng_sub = np.random.default_rng(SUBJECT_SAMPLE_SEED[source])
-    idx = rng_sub.choice(len(all_ids), size=n_subjects, replace=False)
-    return sorted(np.array(all_ids)[idx].tolist())
-
-
-def split_idx(n, rng, fracs=(0.4, 0.15, 0.15, 0.15, 0.15)):
-    idx = rng.permutation(n)
-    cuts = np.cumsum([int(f * n) for f in fracs])[:-1]
-    return np.split(idx, cuts)
-
-
-def prep_subject(sub, rng):
-    calib_i, thresh_i, clean_i, atk_i, test_i = split_idx(len(sub.trials), rng)
-    train_i = np.concatenate([calib_i, thresh_i, clean_i])
-
-    z = encode(sub.trials, FS)
-    atk_trials = inject_alpha(sub.trials, FS, strength=ATTACK_STRENGTH, rng=rng)
-    z_atk = encode(atk_trials, FS)
-
-    mu = z[calib_i].mean(axis=0)
-    std = z[calib_i].std(axis=0) + 1e-8
-
-    return {
-        "id": sub.subject_id, "y": sub.labels,
-        "z": z, "z_atk": z_atk, "mu": mu, "std": std,
-        "train_i": train_i, "test_i": test_i,
-        "z_calib": z[calib_i],
-        "z_thresh_s": standardize(z[thresh_i], mu, std),
-        "z_clean_s": standardize(z[clean_i], mu, std),
-        "z_atk_s": standardize(z_atk[atk_i], mu, std),
-        "offset": mu / std,
-    }
+                             keygen, make_lsh, make_projection_matrix, mismatch_frac,
+                             sign_reading, verify_signature, verify_tamper)
 
 
 def run_pillars_2_3(prep, rng):
@@ -173,7 +91,7 @@ def run_pillars_2_3(prep, rng):
         tau_bits = calibrate_threshold(hd_t, TARGET_FRR)
 
         theory = theoretical_power_bound(float(np.mean(mu_diffs)), float(sigma), clip,
-                                          r, float(np.mean(nu2s)), ALPHA0)
+                                         r, float(np.mean(nu2s)), ALPHA0)
 
         out.append({
             "sigma": float(sigma), "epsilon": epsilon_of_sigma(float(sigma), DELTA, clip),
@@ -191,51 +109,31 @@ def run_pillars_2_3(prep, rng):
     return out, clip
 
 
-def build_clients(prep, clip):
-    clients = []
-    for p in prep:
-        z_s = standardize(p["z"], p["mu"], p["std"])
-        z_sc = clip_l2(z_s, clip)
-        za_s = standardize(p["z_atk"], p["mu"], p["std"])
-        za_sc = clip_l2(za_s, clip)
-
-        i = p["train_i"]
-        clients.append(Client(
-            client_id=p["id"], X_calib=p["z_calib"],
-            X_clean=augment(z_sc[i]), y_clean=p["y"][i].astype(np.float64),
-            X_attacked=augment(za_sc[i]),
-        ))
-    return clients
-
-
 def run_pillar1(prep, clip, rng):
     clients = build_clients(prep, clip)
     r = clients[0].X_clean.shape[1] - 1
     X_test = np.concatenate([augment(clip_l2(standardize(p["z"], p["mu"], p["std"]), clip)[p["test_i"]])
-                              for p in prep])
+                             for p in prep])
     y_test = np.concatenate([p["y"][p["test_i"]] for p in prep]).astype(np.float64)
 
     conv = []
     for sigma in P1_SIGMAS_CONV:
         out = run_dp_fedprox_eeg(clients, X_test, y_test, clip_norm_base=clip,
-                                  sigma=sigma, delta=DELTA, rounds=P1_ROUNDS,
-                                  local_steps=P1_LOCAL_STEPS, batch_size=P1_BATCH_SIZE,
-                                  rng=np.random.default_rng(1))
+                                 sigma=sigma, delta=DELTA, rounds=P1_ROUNDS,
+                                 local_steps=P1_LOCAL_STEPS, batch_size=P1_BATCH_SIZE,
+                                 rng=np.random.default_rng(1))
         beta = out["beta"]
         w_star, F_star = local_optimum(X_test, y_test, beta, n_steps=400)
         F_w0 = model_loss(np.zeros(r + 1), X_test, y_test)
-        local_stars = [local_optimum(c.X_clean, c.y_clean, beta, n_steps=200)[1] for c in clients]
-        n_total = sum(c.n_k for c in clients)
-        p_k = np.array([c.n_k / n_total for c in clients])
-        gamma = max(F_star - float(np.dot(p_k, local_stars)), 0.0)
+        nu2 = estimate_nu2(clients, P1_BATCH_SIZE)
+        C_tilde = float(np.mean(list(out["clip_norms"].values())))
 
-        rhs = convergence_bound_rhs(F_w0, F_star, out["eta0"], beta, sigma,
-                                     float(np.mean(list(out["clip_norms"].values()))), r + 1,
-                                     len(clients), P1_ROUNDS, out["eta_history"], gamma, out["mu_prox"])
+        rhs = convergence_bound_rhs(F_w0, F_star, out["eta0"], beta, out["mu_prox"], sigma,
+                                    C_tilde, nu2, r + 1, len(clients), P1_LOCAL_STEPS, P1_ROUNDS)
         lhs = float(np.mean([h.grad_norm_sq for h in out["history"]]))
         conv.append({
             "sigma": sigma, "lhs_empirical": lhs, "rhs_bound": rhs,
-            "F_star": F_star, "beta": beta, "gamma_heterogeneity": gamma,
+            "F_star": F_star, "beta": beta, "nu2": nu2, "C_tilde": C_tilde,
             "final_acc": out["history"][-1].global_acc, "final_loss": out["history"][-1].global_loss,
             "history": [{"round": h.round, "loss": h.global_loss, "acc": h.global_acc,
                          "grad_norm_sq": h.grad_norm_sq, "epsilon_t": h.epsilon_t} for h in out["history"]],
@@ -262,17 +160,17 @@ def run_pillar1(prep, clip, rng):
 
     out_clean = run_dp_fedprox_eeg(clients, rng=np.random.default_rng(2), **kw)
     out_data_ng = run_dp_fedprox_eeg(clients, rng=np.random.default_rng(2),
-                                      compromised_ids=bad_ids, poison_mode="data", **kw)
+                                     compromised_ids=bad_ids, poison_mode="data", **kw)
     out_data_g = run_dp_fedprox_eeg(clients, rng=np.random.default_rng(2),
-                                     compromised_ids=bad_ids, gate_fn=gate_fn, poison_mode="data", **kw)
+                                    compromised_ids=bad_ids, gate_fn=gate_fn, poison_mode="data", **kw)
     out_grad_ng = run_dp_fedprox_eeg(clients, rng=np.random.default_rng(2),
-                                      compromised_ids=bad_ids, poison_mode="gradient", **kw)
+                                     compromised_ids=bad_ids, poison_mode="gradient", **kw)
     out_grad_g = run_dp_fedprox_eeg(clients, rng=np.random.default_rng(2),
-                                     compromised_ids=bad_ids, gate_fn=gate_fn, poison_mode="gradient", **kw)
+                                    compromised_ids=bad_ids, gate_fn=gate_fn, poison_mode="gradient", **kw)
 
     def summarize(o):
         return [{"round": h.round, "loss": h.global_loss, "acc": h.global_acc,
-                  "n_gated_out": h.n_gated_out} for h in o["history"]]
+                 "n_gated_out": h.n_gated_out} for h in o["history"]]
 
     w_ref = conv[0]["_w"] if conv else None
     for c in conv:
@@ -327,12 +225,9 @@ def run_passive_inference(prep, clip, w_ref, rng, n_clients=5, n_per_client=2):
 
 
 def run_dataset(name, n_subjects, seed=0):
-    load_fn, list_fn, max_trials = DATASETS[name]
     rng = np.random.default_rng(seed)
-    all_ids = list_fn()
-    ids = select_subjects(name, all_ids, n_subjects)
-    print(f"  loading {len(ids)} {name} subjects ...")
-    subjects = [load_fn(sid, max_trials=max_trials) for sid in ids]
+    subjects = load_subjects(name, n_subjects)
+    print(f"  loaded {len(subjects)} {name} subjects")
     prep = [prep_subject(s, rng) for s in subjects]
 
     print(f"  running pillars 2+3 sweep for {name} ...")
@@ -353,21 +248,21 @@ def run_dataset(name, n_subjects, seed=0):
 
 
 def main():
+    global P1_ROUNDS
     ap = argparse.ArgumentParser()
     ap.add_argument("--quick", action="store_true")
     ap.add_argument("--out", type=str, default="results")
+    ap.add_argument("--cohorts", nargs="+", choices=COHORTS, default=COHORTS)
     args = ap.parse_args()
 
     n_subjects = 4 if args.quick else 15
     if args.quick:
-        global P1_ROUNDS
         P1_ROUNDS = 6
 
-    out_dir = Path(__file__).parent / args.out
+    out_dir = REPO_ROOT / args.out
     out_dir.mkdir(exist_ok=True)
 
-    for name in ("cho", "lee", "won", "zhang",
-                 "wang_eo", "wang_ec", "cogbci_eo", "cogbci_ec"):
+    for name in args.cohorts:
         t0 = time.time()
         result = run_dataset(name, n_subjects)
         with open(out_dir / f"{name}.json", "w") as f:

@@ -93,6 +93,8 @@ class SubjectData:
     paradigm: str
     trials: np.ndarray
     labels: np.ndarray
+    times: np.ndarray | None = None
+    runs: np.ndarray | None = None
 
 
 def _filt(raw):
@@ -103,8 +105,7 @@ def _filt(raw):
 
 
 def load_cho_subject(subject_id, max_trials=200):
-    path = ROOT / "Cho" / "gigadb-datasets" / "live" / "pub" / "10.5524" / \
-        "100001_101000" / "100295" / "mat_data" / f"{subject_id}.mat"
+    path = ROOT / "cho" / f"{subject_id}.mat"
     mat = scipy.io.loadmat(str(path), simplify_cells=True)
     eeg = mat["eeg"]
     n_trials = int(eeg["n_imagery_trials"])
@@ -136,9 +137,7 @@ def load_cho_subject(subject_id, max_trials=200):
 
 def _lee_path(session, idx):
     sess = session[-1]
-    return (ROOT / "Lee" / "gigadb-datasets" / "live" / "pub" / "10.5524" /
-            "100001_101000" / "100542" / session / f"s{idx}" /
-            f"sess0{sess}_subj{idx:02d}_EEG_MI.mat")
+    return ROOT / "lee" / f"sess0{sess}_subj{idx:02d}_EEG_MI.mat"
 
 
 def load_lee_subject(subject_id, session="session1", max_trials=200):
@@ -174,7 +173,7 @@ def _filt_won(raw):
 
 
 def load_won_subject(subject_id, max_trials=150, seed=0):
-    sub_dir = ROOT / "won_raw" / "eeg_bids" / "Won2022_BIDS" / subject_id
+    sub_dir = ROOT / "won" / subject_id
     set_file = sub_dir / "eeg" / f"{subject_id}_task-RSVPtask_run-3_eeg.set"
     raw = mne.io.read_raw_eeglab(str(set_file), preload=True, verbose=False)
     raw.rename_channels({k: v for k, v in WON_MAP.items() if k in raw.ch_names})
@@ -199,20 +198,22 @@ def load_won_subject(subject_id, max_trials=150, seed=0):
     ep.resample(FS_OUT, verbose=False)
     data = ep.get_data() * 1e6
     y = (ep.events[:, 2] == 1).astype(np.int64)
+    times = ep.events[:, 0] / raw.info["sfreq"]
 
     if max_trials is not None:
-        data, y = data[:max_trials], y[:max_trials]
-    return SubjectData(subject_id, "won", data.astype(np.float32), y)
+        data, y, times = data[:max_trials], y[:max_trials], times[:max_trials]
+    return SubjectData(subject_id, "won", data.astype(np.float32), y,
+                       times=times, runs=np.zeros(len(y), dtype=np.int64))
 
 
-def load_zhang_subject(subject_id, day="Day_1", max_trials=150, seed=0):
-    path = ROOT / "zhang_raw" / f"{subject_id}.mat"
-    trials, labels = [], []
+def load_zhang_subject(subject_id, day="Day_1", max_trials=150, seed=0, ordered=False):
+    path = ROOT / "zhang" / f"{subject_id}.mat"
+    trials, labels, times, runs = [], [], [], []
     pre = int(round(ZHANG_PRE * ZHANG_FS))
     post = int(round(ZHANG_POST * ZHANG_FS))
 
     with h5py.File(str(path), "r") as f:
-        for ref in f[day][:, 0]:
+        for run, ref in enumerate(f[day][:, 0]):
             mat = f[ref][:]
             eeg = mat[:, :57].T.astype(np.float64)
             trig = mat[:, 57]
@@ -231,6 +232,8 @@ def load_zhang_subject(subject_id, day="Day_1", max_trials=150, seed=0):
                         continue
                     trials.append(d[:, start:end])
                     labels.append(lab)
+                    times.append(pos)
+                    runs.append(run)
 
     ep = np.stack(trials)
     y = np.array(labels, dtype=np.int64)
@@ -241,12 +244,15 @@ def load_zhang_subject(subject_id, day="Day_1", max_trials=150, seed=0):
     n_keep = min(len(ntg_idx), len(tgt_idx) * 2)
     ntg_idx = rng.choice(ntg_idx, size=n_keep, replace=False)
     keep = np.sort(np.concatenate([tgt_idx, ntg_idx]))
+    if ordered:
+        keep = keep[np.lexsort((np.array(times)[keep], np.array(runs)[keep]))]
     ep, y = ep[keep], y[keep]
+    times, runs = np.array(times)[keep] / ZHANG_FS, np.array(runs)[keep]
 
     ep_rs = resample_poly(ep, up=1, down=4, axis=-1)
     if max_trials is not None:
-        ep_rs, y = ep_rs[:max_trials], y[:max_trials]
-    return SubjectData(subject_id, "zhang", ep_rs.astype(np.float32), y)
+        ep_rs, y, times, runs = ep_rs[:max_trials], y[:max_trials], times[:max_trials], runs[:max_trials]
+    return SubjectData(subject_id, "zhang", ep_rs.astype(np.float32), y, times=times, runs=runs)
 
 
 def _epoch_continuous(d, fs, epoch_sec=RS_EPOCH_SEC):
@@ -255,8 +261,8 @@ def _epoch_continuous(d, fs, epoch_sec=RS_EPOCH_SEC):
     return d[:, :n * win].reshape(d.shape[0], n, win).transpose(1, 0, 2)
 
 
-def _load_wang_cond(subject_id, task, tag, max_trials, seed):
-    base = ROOT / "wang_raw" / "ds004148" / subject_id / "ses-session1" / "eeg"
+def _load_wang_cond(subject_id, task, tag, max_trials, seed, ordered):
+    base = ROOT / "wang" / subject_id / "ses-session1" / "eeg"
     vhdr = base / f"{subject_id}_ses-session1_task-{task}_eeg.vhdr"
     raw = mne.io.read_raw_brainvision(str(vhdr), preload=True, verbose=False)
     raw = _filt(raw)
@@ -267,29 +273,29 @@ def _load_wang_cond(subject_id, task, tag, max_trials, seed):
     half = n // 2
     y = np.concatenate([np.zeros(half, dtype=np.int64), np.ones(n - half, dtype=np.int64)])
 
-    rng = np.random.default_rng(seed)
-    idx = rng.permutation(n)
-    ep, y = ep[idx], y[idx]
+    if not ordered:
+        idx = np.random.default_rng(seed).permutation(n)
+        ep, y = ep[idx], y[idx]
     if max_trials is not None:
         ep, y = ep[:max_trials], y[:max_trials]
     return SubjectData(subject_id, tag, ep.astype(np.float32), y)
 
 
-def load_wang_eo_subject(subject_id, max_trials=150, seed=0):
-    return _load_wang_cond(subject_id, "eyesopen", "wang_eo", max_trials, seed)
+def load_wang_eo_subject(subject_id, max_trials=150, seed=0, ordered=False):
+    return _load_wang_cond(subject_id, "eyesopen", "wang_eo", max_trials, seed, ordered)
 
 
-def load_wang_ec_subject(subject_id, max_trials=150, seed=0):
-    return _load_wang_cond(subject_id, "eyesclosed", "wang_ec", max_trials, seed)
+def load_wang_ec_subject(subject_id, max_trials=150, seed=0, ordered=False):
+    return _load_wang_cond(subject_id, "eyesclosed", "wang_ec", max_trials, seed, ordered)
 
 
 def list_wang_subjects():
-    d = ROOT / "wang_raw" / "ds004148"
+    d = ROOT / "wang"
     return sorted(p.name for p in d.iterdir() if p.is_dir() and p.name.startswith("sub-"))
 
 
-def _load_cogbci_cond(subject_id, cond, tag, max_trials, seed):
-    base = ROOT / "cogbci_raw" / "cog_bci" / f"{subject_id}_extract" / subject_id
+def _load_cogbci_cond(subject_id, cond, tag, max_trials, seed, ordered):
+    base = ROOT / "cogbci" / subject_id
     trials, labels = [], []
     for pos, lab in (("Beg", 0), ("End", 1)):
         for set_path in sorted(base.rglob(f"RS_{pos}_*.set")):
@@ -304,30 +310,29 @@ def _load_cogbci_cond(subject_id, cond, tag, max_trials, seed):
 
     pooled = np.concatenate(trials, axis=0)
     y = np.concatenate(labels)
-    rng = np.random.default_rng(seed)
-    idx = rng.permutation(len(y))
-    pooled, y = pooled[idx], y[idx]
+    if not ordered:
+        idx = np.random.default_rng(seed).permutation(len(y))
+        pooled, y = pooled[idx], y[idx]
     if max_trials is not None:
         pooled, y = pooled[:max_trials], y[:max_trials]
     return SubjectData(subject_id, tag, pooled.astype(np.float32), y)
 
 
-def load_cogbci_eo_subject(subject_id, max_trials=150, seed=0):
-    return _load_cogbci_cond(subject_id, "EO", "cogbci_eo", max_trials, seed)
+def load_cogbci_eo_subject(subject_id, max_trials=150, seed=0, ordered=False):
+    return _load_cogbci_cond(subject_id, "EO", "cogbci_eo", max_trials, seed, ordered)
 
 
-def load_cogbci_ec_subject(subject_id, max_trials=150, seed=0):
-    return _load_cogbci_cond(subject_id, "EC", "cogbci_ec", max_trials, seed)
+def load_cogbci_ec_subject(subject_id, max_trials=150, seed=0, ordered=False):
+    return _load_cogbci_cond(subject_id, "EC", "cogbci_ec", max_trials, seed, ordered)
 
 
 def list_cogbci_subjects():
-    d = ROOT / "cogbci_raw" / "cog_bci"
-    ids = sorted(p.name[:-len("_extract")] for p in d.iterdir()
-                 if p.is_dir() and p.name.endswith("_extract"))
+    d = ROOT / "cogbci"
+    ids = sorted(p.name for p in d.iterdir() if p.is_dir() and p.name.startswith("sub-"))
     need = set(CH32)
     ok = []
     for sid in ids:
-        sets = sorted((d / f"{sid}_extract" / sid).rglob("RS_*.set"))
+        sets = sorted((d / sid).rglob("RS_*.set"))
         if not sets:
             continue
         complete = True
@@ -342,22 +347,20 @@ def list_cogbci_subjects():
 
 
 def list_cho_subjects():
-    d = ROOT / "Cho" / "gigadb-datasets" / "live" / "pub" / "10.5524" / "100001_101000" / "100295" / "mat_data"
-    return sorted(p.stem for p in d.glob("s*.mat"))
+    return sorted(p.stem for p in (ROOT / "cho").glob("s*.mat"))
 
 
 def list_lee_subjects(session="session1"):
-    d = ROOT / "Lee" / "gigadb-datasets" / "live" / "pub" / "10.5524" / "100001_101000" / "100542" / session
-    ids = sorted((p.name for p in d.iterdir() if p.is_dir() and p.name.startswith("s")),
-                 key=lambda s: int(s[1:]))
-    return [f"sub-{int(i[1:]):02d}" for i in ids]
+    files = (ROOT / "lee").glob(f"sess0{session[-1]}_subj*_EEG_MI.mat")
+    idx = sorted(int(p.name.split("_subj")[1][:2]) for p in files)
+    return [f"sub-{i:02d}" for i in idx]
 
 
 def list_won_subjects():
-    d = ROOT / "won_raw" / "eeg_bids" / "Won2022_BIDS"
+    d = ROOT / "won"
     return sorted(p.name for p in d.iterdir() if p.is_dir() and p.name.startswith("sub-"))
 
 
 def list_zhang_subjects():
-    d = ROOT / "zhang_raw"
+    d = ROOT / "zhang"
     return sorted((p.stem for p in d.glob("S*.mat")), key=lambda s: int(s[1:]))

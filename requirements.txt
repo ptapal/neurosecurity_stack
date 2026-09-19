@@ -1,0 +1,6 @@
+numpy
+scipy
+mne
+h5py
+cryptography
+matplotlib

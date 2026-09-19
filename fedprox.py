@@ -2,7 +2,6 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from autocorrelation import corrected_clip_norm, estimate_rho
 from model import accuracy, loss, per_sample_grad, smoothness_beta
 from privacy import accumulated_epsilon
 
@@ -60,14 +59,15 @@ def run_dp_fedprox_eeg(clients, X_test_aug, y_test, clip_norm_base, sigma, delta
     compromised_ids = compromised_ids or set()
     d = clients[0].X_clean.shape[1]
 
-    clips = {}
-    for c in clients:
-        rho = estimate_rho(c.X_calib, max_lag=5)
-        clips[c.client_id] = corrected_clip_norm(clip_norm_base, rho)
+    # Participant-level group privacy: a client is one subject and each local mini-batch is
+    # drawn from that subject alone, so g* = batch_size and tilde_C = g* * C.
+    tilde_C = batch_size * clip_norm_base
+    clips = {c.client_id: tilde_C for c in clients}
 
     beta = smoothness_beta(np.concatenate([c.X_clean for c in clients], axis=0))
     mu = beta
-    eta0 = 1.0 / (mu + beta)
+    # Theorem 6.1 step-size condition: eta_0 <= min(1/(mu+beta), 1/(4*beta*E)).
+    eta0 = min(1.0 / (mu + beta), 1.0 / (4.0 * beta * local_steps))
 
     n_total = sum(c.n_k for c in clients)
     p_k = {c.client_id: c.n_k / n_total for c in clients}
@@ -113,8 +113,25 @@ def run_dp_fedprox_eeg(clients, X_test_aug, y_test, clip_norm_base, sigma, delta
             "eta0": eta0, "clip_norms": clips, "eta_history": eta_hist}
 
 
-def convergence_bound_rhs(F_w0, F_star, eta0, beta, sigma, clip_avg, d, m, rounds, eta_hist, gamma, mu):
-    opt = 2.0 * (F_w0 - F_star) / (eta0 * rounds)
-    dp = (beta * sigma ** 2 * clip_avg ** 2 * d / (m * rounds)) * float(np.sum(np.array(eta_hist) ** 2))
-    het = 4.0 * beta ** 2 * gamma ** 2 / mu ** 2
-    return {"optimization_error": opt, "dp_noise_error": dp, "heterogeneity_error": het, "total": opt + dp + het}
+def estimate_nu2(clients, batch_size, w=None):
+    """Empirical minibatch-gradient variance (Assumption 6.2's nu^2): Var(per-sample grad) / batch, averaged over clients."""
+    per_client_nu2 = []
+    for c in clients:
+        n = c.X_clean.shape[0]
+        w0 = np.zeros(c.X_clean.shape[1]) if w is None else w
+        g_full = per_sample_grad(w0, c.X_clean, c.y_clean)
+        var_per_sample = np.sum(np.var(g_full, axis=0))
+        nu2 = var_per_sample / min(batch_size, n)
+        per_client_nu2.append(nu2)
+    return float(np.mean(per_client_nu2))
+
+
+def convergence_bound_rhs(F_w0, F_star, eta0, beta, mu, sigma, C_tilde, nu2, d, m, E, T):
+    """Right-hand side of Theorem 6.1: optimization + DP-noise + drift terms with constant eta_0 and no heterogeneity term."""
+    opt = 4.0 * (F_w0 - F_star) / (eta0 * E * T)
+    noise = 4.0 * beta * E * (nu2 + sigma ** 2 * C_tilde ** 2 * d) / m * eta0
+    B_E = eta0 ** 2 * (beta + mu) * C_tilde * (1.0 + sigma * np.sqrt(d)) * E * (E - 1) / 2.0
+    drift = 4.0 * B_E ** 2 / (eta0 * E) * (1.0 / (2.0 * eta0 * E) + beta)
+    total = opt + noise + drift
+    return {"optimization_error": opt, "dp_noise_error": noise, "drift_error": drift,
+            "B_E": B_E, "total": total}
