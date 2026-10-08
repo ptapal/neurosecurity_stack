@@ -20,7 +20,7 @@ from signature import (calibrate_threshold, dp_project, enroll_reference, finger
                              sign_reading, verify_signature, verify_tamper)
 
 
-def run_pillars_2_3(prep, rng):
+def run_sigma_sweep(prep, rng):
     r = prep[0]["z_calib"].shape[1]
     pool = np.concatenate([p["z_thresh_s"] for p in prep], axis=0)
     clip = choose_clip_norm(pool, q=0.95)
@@ -28,9 +28,9 @@ def run_pillars_2_3(prep, rng):
     bases = []
     for p in prep:
         b = fit_baseline(p["z_calib"], clip_norm=clip, ridge=RIDGE)
-        b.mu = ema_settle(clip_l2(p["z_thresh_s"], clip), b.mu, gamma=EMA_GAMMA)
+        b.mu = ema_settle(clip_l2(p["z_ema_s"], clip), b.mu, gamma=EMA_GAMMA)
         bases.append(b)
-        p["z_thresh_c"] = clip_l2(p["z_thresh_s"], clip)
+        p["z_tau_c"] = clip_l2(p["z_tau_s"], clip)
         p["z_clean_c"] = clip_l2(p["z_clean_s"], clip)
         p["z_atk_c"] = clip_l2(p["z_atk_s"], clip)
 
@@ -52,7 +52,7 @@ def run_pillars_2_3(prep, rng):
         sig_ok_c, sig_ok_a = [], []
 
         for p, b, dev, ref in zip(prep, bases, devs, refs):
-            zt = gaussian_mechanism(p["z_thresh_c"], sigma, rng)
+            zt = gaussian_mechanism(p["z_tau_c"], sigma, rng)
             zc = gaussian_mechanism(p["z_clean_c"], sigma, rng)
             za = gaussian_mechanism(p["z_atk_c"], sigma, rng)
 
@@ -109,7 +109,7 @@ def run_pillars_2_3(prep, rng):
     return out, clip
 
 
-def run_pillar1(prep, clip, rng):
+def run_private_training(prep, clip, rng):
     clients = build_clients(prep, clip)
     r = clients[0].X_clean.shape[1] - 1
     X_test = np.concatenate([augment(clip_l2(standardize(p["z"], p["mu"], p["std"]), clip)[p["test_i"]])
@@ -151,7 +151,7 @@ def run_pillar1(prep, clip, rng):
         z = gaussian_mechanism(p["z_clean_c"][:5], P1_SIGMA_DEMO, rng)
         score = mahalanobis_score(z, gate_base).mean()
         tau = empirical_threshold(
-            mahalanobis_score(gaussian_mechanism(p["z_thresh_c"], P1_SIGMA_DEMO, rng), gate_base), ALPHA0)
+            mahalanobis_score(gaussian_mechanism(p["z_tau_c"], P1_SIGMA_DEMO, rng), gate_base), ALPHA0)
         return bool(score > tau)
 
     kw = dict(X_test_aug=X_test, y_test=y_test, clip_norm_base=clip,
@@ -225,25 +225,25 @@ def run_passive_inference(prep, clip, w_ref, rng, n_clients=5, n_per_client=2):
 
 
 def run_dataset(name, n_subjects, seed=0):
-    rng = np.random.default_rng(seed)
     subjects = load_subjects(name, n_subjects)
     print(f"  loaded {len(subjects)} {name} subjects")
-    prep = [prep_subject(s, rng) for s in subjects]
+    prep_rng = np.random.default_rng(seed)
+    prep = [prep_subject(s, prep_rng) for s in subjects]
 
-    print(f"  running pillars 2+3 sweep for {name} ...")
-    sweep, clip = run_pillars_2_3(prep, rng)
+    print(f"  running signature+detection sweep for {name} ...")
+    sweep, clip = run_sigma_sweep(prep, np.random.default_rng(seed + 1))
 
-    print(f"  running pillar 1 for {name} ...")
-    pillar1 = run_pillar1(prep, clip, rng)
-    w_ref = pillar1.pop("w_ref")
+    print(f"  running private training for {name} ...")
+    private_training = run_private_training(prep, clip, np.random.default_rng(seed + 2))
+    w_ref = private_training.pop("w_ref")
 
     print(f"  running passive inference for {name} ...")
-    pi = run_passive_inference(prep, clip, w_ref, rng)
+    pi = run_passive_inference(prep, clip, w_ref, np.random.default_rng(seed + 3))
 
     return {
         "dataset": name, "n_subjects": len(prep), "embedding_dim": prep[0]["z_calib"].shape[1],
         "clip_norm": clip, "attack_strength": ATTACK_STRENGTH,
-        "sigma_sweep": sweep, "pillar1": pillar1, "passive_inference": pi,
+        "sigma_sweep": sweep, "private_training": private_training, "passive_inference": pi,
     }
 
 

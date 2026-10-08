@@ -1,15 +1,17 @@
+import os
 from pathlib import Path
 
 import numpy as np
 
-from raw_loader import (list_cho_subjects, list_cogbci_subjects, list_lee_subjects,
+from raw_loader import (CLEAN_LOADERS, list_cho_subjects, list_cogbci_subjects, list_lee_subjects,
                               list_wang_subjects, list_won_subjects, list_zhang_subjects,
                               load_cho_subject, load_cogbci_ec_subject, load_cogbci_eo_subject,
                               load_lee_subject, load_wang_ec_subject, load_wang_eo_subject,
                               load_won_subject, load_zhang_subject)
 
 REPO_ROOT = Path(__file__).resolve().parent
-RESULTS_DIR = REPO_ROOT / "results"
+CLEAN = os.environ.get("EEG_CLEAN") == "1"
+RESULTS_DIR = REPO_ROOT / ("results_clean" if CLEAN else "results")
 FIG_DIR = RESULTS_DIR / "figures"
 
 FS = 250.0
@@ -31,16 +33,32 @@ P1_SIGMAS_CONV = [0.1, 0.5, 2.0]
 P1_SIGMA_DEMO = 0.5
 P1_FRAC_BAD = 0.3
 
-DATASETS = {
-    "cho": (load_cho_subject, list_cho_subjects, 200),
-    "lee": (load_lee_subject, list_lee_subjects, 200),
-    "won": (load_won_subject, list_won_subjects, 150),
-    "zhang": (load_zhang_subject, list_zhang_subjects, 150),
-    "wang_eo": (load_wang_eo_subject, list_wang_subjects, 150),
-    "wang_ec": (load_wang_ec_subject, list_wang_subjects, 150),
-    "cogbci_eo": (load_cogbci_eo_subject, list_cogbci_subjects, 150),
-    "cogbci_ec": (load_cogbci_ec_subject, list_cogbci_subjects, 150),
+def _without_baseline(loader):
+    def load(*args, **kwargs):
+        sub = loader(*args, **kwargs)
+        sub.baseline = None
+        return sub
+    return load
+
+
+_ORIGINAL = {
+    "cho": load_cho_subject, "lee": load_lee_subject, "won": load_won_subject,
+    "zhang": load_zhang_subject, "wang_eo": load_wang_eo_subject, "wang_ec": load_wang_ec_subject,
+    "cogbci_eo": load_cogbci_eo_subject, "cogbci_ec": load_cogbci_ec_subject,
 }
+DATASETS = {
+    "cho": (None, list_cho_subjects, 200),
+    "lee": (None, list_lee_subjects, 200),
+    "won": (None, list_won_subjects, 150),
+    "zhang": (None, list_zhang_subjects, 150),
+    "wang_eo": (None, list_wang_subjects, 150),
+    "wang_ec": (None, list_wang_subjects, 150),
+    "cogbci_eo": (None, list_cogbci_subjects, 150),
+    "cogbci_ec": (None, list_cogbci_subjects, 150),
+}
+for _name, (_, _list_fn, _max) in list(DATASETS.items()):
+    _loader = CLEAN_LOADERS[_name] if CLEAN else _ORIGINAL[_name]
+    DATASETS[_name] = (_without_baseline(_loader) if CLEAN else _loader, _list_fn, _max)
 COHORTS = list(DATASETS)
 
 # Fixed per-source seeds make subject subsampling reproducible instead of "first N by ID";
@@ -51,7 +69,7 @@ COHORT_SOURCE = {"cho": "cho", "lee": "lee", "won": "won", "zhang": "zhang",
                  "wang_eo": "wang", "wang_ec": "wang",
                  "cogbci_eo": "cogbci", "cogbci_ec": "cogbci"}
 
-# Subjects drawn by the seeds above from the full datasets; with only these present, all are used.
+# Participants drawn by the seeds above from the full datasets; with only these present, all are used.
 PAPER_SUBJECTS = {
     "cho": "s06 s08 s12 s14 s15 s18 s27 s28 s29 s34 s37 s39 s45 s46 s48".split(),
     "lee": [f"sub-{i:02d}" for i in (5, 7, 11, 14, 18, 19, 23, 24, 26, 33, 34, 38, 44, 47, 48)],

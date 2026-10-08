@@ -1,8 +1,3 @@
-"""Check that z_t is close enough to multivariate Gaussian for Theorem 8.1 and Proposition 7.1.
-
-Primary: chi^2_r QQ-plot of squared Mahalanobis distances per calibration window (mean/cov from fit_baseline).
-Secondary: per-channel Shapiro-Wilk rejection rate at alpha = 0.05.
-"""
 import numpy as np
 from scipy import stats
 import matplotlib
@@ -58,7 +53,6 @@ def main():
         ax.set_title(f"{LABELS[name]}\nShapiro reject frac.={res['shapiro_reject_frac']:.2f} (n={res['n_shapiro_tests']})",
                      fontsize=9)
         ax.grid(alpha=0.2)
-    fig.suptitle(r"Multivariate Gaussianity check: $\chi^2_r$ QQ-plot of squared Mahalanobis distances, calibration windows, all 8 cohorts")
     fig.tight_layout()
     FIG_DIR.mkdir(exist_ok=True, parents=True)
     out = FIG_DIR / "gaussianity_qq_check.png"

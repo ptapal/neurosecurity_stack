@@ -1,10 +1,3 @@
-"""Pillar-1 convergence check for Theorem 6.1, one cohort per invocation.
-
-Trains from scratch per sigma with eta_0 = min(1/(mu+beta), 1/(4*beta*E)) and group-corrected clipping
-tilde_C = batch_size * C. Existing results/<cohort>.json runs used the earlier step size and clip norm, so
-they are read only for the old_* comparison columns. Also checks Assumption A1 (clipping never binds) at tilde_C.
-Writes results/<cohort>_pillar1_v2.json.
-"""
 import json
 import sys
 import time
@@ -68,7 +61,7 @@ def load_old(name):
         return None
     with open(path) as f:
         d = json.load(f)
-    return {r["sigma"]: r for r in d["pillar1"]["convergence_checks"]}
+    return {r["sigma"]: r for r in d["private_training"]["convergence_checks"]}
 
 
 def run(name, n_subjects=15):
@@ -119,7 +112,7 @@ def run(name, n_subjects=15):
     result = {"dataset": name, "n_subjects": K, "d": d,
               "convergence_checks": rows, "assumption_a1": a1}
 
-    with open(RESULTS_DIR / f"{name}_pillar1_v2.json", "w") as f:
+    with open(RESULTS_DIR / f"{name}_convergence.json", "w") as f:
         json.dump(result, f, indent=2)
 
     print(f"\n=== {name} ===  K={K}  d={d}")

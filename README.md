@@ -1,17 +1,31 @@
 # neurosecurity_stack
 
-Alpha-band injection attack validation for a three-pillar neurosecurity stack (DP federated learning, private signaturing, anomaly detection), plus passive inference and active poisoning. Eight cohorts from six public datasets: endogenous (Cho, Lee), exogenous (Won, Zhang), no-driver rest (Wang, COG-BCI; eyes-open and eyes-closed each).
+Alpha-band injection attack validation for a privacy-preserving neurosecurity stack: DP federated learning, a tamper-evident signature, and an anomaly detector, plus passive inference and active poisoning. Eight cohorts from six public datasets: endogenous (Cho, Lee), exogenous (Won, Zhang), no-driver rest (Wang, COG-BCI; eyes-open and eyes-closed each).
 
 ## Layout
 
-| Path | Content |
+| File | What it does |
 |---|---|
-| `run_simulation.py` | full run over all cohorts, writes `results/<cohort>.json` |
-| `raw_loader.py`, `cohort.py`, `config.py` | data loading, subject selection, constants |
-| `features.py`, `attack.py`, `privacy.py`, `detect.py`, `signature.py`, `model.py`, `fedprox.py`, `inversion.py` | the stack: encoder, alpha injection, DP mechanisms, Pillar 3 detector, Pillar 2 signature, federated training, gradient inversion |
-| `analyses/` | paper checks (Theorem 6.1, Theorem 8.1, poisoning sweep, autocorrelation, joint adversary); see its README |
-| `plots/` | figure scripts |
-| `results/` | JSON outputs and figures |
+| `run_simulation.py` | full run over all cohorts: signature+detection sweep, private training, passive inference; writes `results/<cohort>.json` |
+| `raw_loader.py` | per-dataset raw EEG loaders (Cho, Lee, Won, Zhang, Wang, COG-BCI) and the clean (ICA/CAR/interpolation) variants |
+| `preprocess.py` | the clean-loader pipeline: IIR bandpass, resample, bad-channel interpolation, CAR, ICA |
+| `cohort.py` | subject sampling, train/calib/test split, client construction |
+| `config.py` | every constant: paths, sigma grid, LSH/privacy/federated-training parameters, subject seeds |
+| `utils.py` | deterministic seeding (`seed_from`) and JSON load/save, shared by `analyses/*` |
+| `features.py` | alpha-band log-power encoder |
+| `attack.py` | sensor-level sinusoidal injection |
+| `privacy.py` | clipping, Gaussian mechanism, RDP accounting |
+| `detect.py` | baseline fitting, Mahalanobis/L2 anomaly score, EMA |
+| `signature.py` | random projection, LSH fingerprint, Ed25519 signing |
+| `model.py` | logistic regression: loss, gradient, accuracy |
+| `fedprox.py` | DP-FedProx-EEG: local DP-SGD, federated averaging, convergence theorem bound |
+| `inversion.py` | gradient-inversion reconstruction attack |
+| `analyses/` | checks behind specific paper claims (detection theorem, convergence theorem, poisoning sweeps, autocorrelation, joint adversary); see its own README |
+| `plots/colors.py` | shared per-cohort colors and axis labels |
+| `plots/plot_results.py` | detection, signature, training-integrity, passive-inference figures |
+| `plots/plot_convergence.py` | convergence-vs-convergence-theorem-bound figure |
+| `plots/plot_subsample_sensitivity.py` | subsample-sensitivity figure |
+| `results/`, `results_clean/` | JSON outputs and figures; see `results/README.md` |
 
 ## Setup
 
@@ -43,6 +57,7 @@ python run_simulation.py --quick
 python run_simulation.py
 python run_simulation.py --cohorts cho lee
 python -m plots.plot_results
+python -m plots.plot_convergence
 python -m analyses.bound_check cho
 ```
 

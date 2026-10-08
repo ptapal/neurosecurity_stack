@@ -1,8 +1,3 @@
-"""Sweep the compromised-client fraction f/K for the crafted-gradient poisoning attack and its Pillar-3 gate.
-
-Reports the final-round accuracy gap (clean vs. poisoned-ungated), the gating effect
-(ungated vs. gated), and gate precision/recall, over 3 compromised-client draws per point.
-"""
 import json
 import time
 
@@ -15,6 +10,7 @@ from detect import empirical_threshold, standardize
 from fedprox import run_dp_fedprox_eeg
 from model import augment
 from privacy import clip_l2
+from utils import seed_from
 
 N_BAD_LEVELS = [1, 4, 7, 10]
 N_REPEATS = 3
@@ -22,8 +18,6 @@ GATE_WARMUP_ROUNDS = 5
 
 
 def make_gate_fn(warmup_rounds=GATE_WARMUP_ROUNDS, alpha0=ALPHA0, ridge=RIDGE, ema_gamma=EMA_GAMMA):
-    """Gate scored on the client's submitted update (w_local - w_glob): per-client EMA mean, covariance
-    pooled from a warmup period, mean updated only on rounds that pass the check."""
     state = {"warmup_deltas": [], "client_mu": {}, "cov_inv": None, "tau": None,
              "global_mu0": None, "initialized": False}
 
@@ -53,6 +47,7 @@ def make_gate_fn(warmup_rounds=GATE_WARMUP_ROUNDS, alpha0=ALPHA0, ridge=RIDGE, e
             state["client_mu"][client_id] = (1.0 - ema_gamma) * mu_k + ema_gamma * delta
         return flagged
 
+    gate_fn.state = state
     return gate_fn
 
 
@@ -105,10 +100,10 @@ def run_for_dataset(name):
     for n_bad in N_BAD_LEVELS:
         gaps, gate_effects, n_gated_list, precisions, recalls = [], [], [], [], []
         for draw in range(N_REPEATS):
-            draw_rng = np.random.default_rng(hash((name, n_bad, draw)) % (2**32))
+            draw_rng = np.random.default_rng(seed_from(name, n_bad, draw))
             bad_ids = set(draw_rng.choice([c.client_id for c in clients], size=n_bad, replace=False))
             acc_ng, acc_g, n_gated, prec, rec = final_acc(prep, clip, X_test, y_test, bad_ids,
-                                                          seed=hash((name, n_bad, draw, "train")) % (2**32))
+                                                          seed=seed_from(name, n_bad, draw, "train"))
             gaps.append(clean_acc - acc_ng)
             gate_effects.append(acc_ng - acc_g)
             n_gated_list.append(n_gated)
@@ -133,7 +128,7 @@ def main():
         print(f"running f/K sweep for {name} ...")
         all_results[name] = run_for_dataset(name)
         print(f"  {name} done in {time.time()-t0:.1f}s")
-    out = RESULTS_DIR / "pillar1_fk_sweep_v2.json"
+    out = RESULTS_DIR / "fk_sweep.json"
     with open(out, "w") as f:
         json.dump(all_results, f, indent=2)
     print(f"wrote {out}")

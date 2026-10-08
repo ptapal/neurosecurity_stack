@@ -1,11 +1,3 @@
-"""Joint adversary: optimize the alpha injection's physical parameters (strength, frequency, channel fraction)
-against one objective that penalizes both Pillar-3 detection (whitened Mahalanobis) and Pillar-2 detection
-(LSH fingerprint mismatch).
-
-The search stays inside the parameterization inject_alpha already exposes because the threat model is a
-physically realizable sensor-level injection, not a per-feature perturbation.
-Usage: python -m analyses.joint_optimizer
-"""
 import json
 import time
 

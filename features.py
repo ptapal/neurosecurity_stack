@@ -20,3 +20,13 @@ def band_power(trials, fs, band, nperseg=256):
 def encode(trials, fs, band=ALPHA_BAND):
     p = band_power(trials, fs, band)
     return np.log(p + EPS).astype(np.float64)
+
+
+def encode_pieces(trials, fs, band=ALPHA_BAND, piece_s=1.0):
+    """Mean over fixed-length pieces of per-piece log band power, so windows of different length share one estimator."""
+    n, ch, T = trials.shape
+    p = int(round(piece_s * fs))
+    k = T // p
+    x = trials[..., :k * p].reshape(n, ch, k, p).transpose(0, 2, 1, 3).reshape(n * k, ch, p)
+    lp = np.log(band_power(x, fs, band, nperseg=p) + EPS)
+    return lp.reshape(n, k, ch).mean(axis=1).astype(np.float64)

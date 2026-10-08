@@ -3,7 +3,7 @@ import numpy as np
 from attack import inject_alpha
 from config import ATTACK_STRENGTH, COHORT_SOURCE, DATASETS, FS, SUBJECT_SAMPLE_SEED
 from detect import choose_clip_norm, standardize
-from features import encode
+from features import encode, encode_pieces
 from fedprox import Client
 from model import augment
 from privacy import clip_l2
@@ -33,11 +33,18 @@ def split_idx(n, rng, fracs=(0.4, 0.15, 0.15, 0.15, 0.15)):
 
 def prep_subject(sub, rng):
     calib_i, thresh_i, clean_i, atk_i, test_i = split_idx(len(sub.trials), rng)
+    ema_i, tau_i = np.array_split(thresh_i, 2)
     train_i = np.concatenate([calib_i, thresh_i, clean_i])
 
-    z = encode(sub.trials, FS)
+    base = getattr(sub, "baseline", None)
+    if base is not None:
+        base_z = encode_pieces(base, FS)
+        enc = lambda x: encode_pieces(x, FS) - base_z
+    else:
+        enc = lambda x: encode(x, FS)
+    z = enc(sub.trials)
     atk_trials = inject_alpha(sub.trials, FS, strength=ATTACK_STRENGTH, rng=rng)
-    z_atk = encode(atk_trials, FS)
+    z_atk = enc(atk_trials)
 
     mu = z[calib_i].mean(axis=0)
     std = z[calib_i].std(axis=0) + 1e-8
@@ -48,6 +55,8 @@ def prep_subject(sub, rng):
         "train_i": train_i, "test_i": test_i,
         "z_calib": z[calib_i],
         "z_thresh_s": standardize(z[thresh_i], mu, std),
+        "z_ema_s": standardize(z[ema_i], mu, std),
+        "z_tau_s": standardize(z[tau_i], mu, std),
         "z_clean_s": standardize(z[clean_i], mu, std),
         "z_atk_s": standardize(z_atk[atk_i], mu, std),
         "offset": mu / std,
@@ -61,7 +70,7 @@ def prep_dataset(name, n_subjects=15, seed=0):
     pool = np.concatenate([p["z_thresh_s"] for p in prep], axis=0)
     clip = choose_clip_norm(pool, q=0.95)
     for p in prep:
-        p["z_thresh_c"] = clip_l2(p["z_thresh_s"], clip)
+        p["z_tau_c"] = clip_l2(p["z_tau_s"], clip)
         p["z_clean_c"] = clip_l2(p["z_clean_s"], clip)
     return prep, clip
 

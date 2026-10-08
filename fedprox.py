@@ -55,18 +55,16 @@ def local_dp_sgd(w, w_glob, Xa, y, clip, sigma, mu, lr, steps, batch, rng):
 
 def run_dp_fedprox_eeg(clients, X_test_aug, y_test, clip_norm_base, sigma, delta,
                         rounds, local_steps, batch_size, rng,
-                        compromised_ids=None, gate_fn=None, poison_mode="data"):
+                        compromised_ids=None, gate_fn=None, poison_mode="data", match_norm=False,
+                        attack_fn=None):
     compromised_ids = compromised_ids or set()
     d = clients[0].X_clean.shape[1]
 
-    # Participant-level group privacy: a client is one subject and each local mini-batch is
-    # drawn from that subject alone, so g* = batch_size and tilde_C = g* * C.
     tilde_C = batch_size * clip_norm_base
     clips = {c.client_id: tilde_C for c in clients}
 
     beta = smoothness_beta(np.concatenate([c.X_clean for c in clients], axis=0))
     mu = beta
-    # Theorem 6.1 step-size condition: eta_0 <= min(1/(mu+beta), 1/(4*beta*E)).
     eta0 = min(1.0 / (mu + beta), 1.0 / (4.0 * beta * local_steps))
 
     n_total = sum(c.n_k for c in clients)
@@ -77,19 +75,32 @@ def run_dp_fedprox_eeg(clients, X_test_aug, y_test, clip_norm_base, sigma, delta
     eta_hist = []
 
     for t in range(1, rounds + 1):
-        eps_t = accumulated_epsilon(t, sigma, delta)
+        eps_t = accumulated_epsilon(t * local_steps, sigma, delta)
         lr_t = eta0
         eta_hist.append(lr_t)
 
         updates, weights, n_gated = [], [], 0
-        for c in clients:
+        if match_norm:
+            local_ws = [local_dp_sgd(w.copy(), w, c.X_attacked if (c.client_id in compromised_ids and poison_mode == "data") else c.X_clean,
+                                     c.y_clean, clips[c.client_id], sigma, mu, lr_t, local_steps, batch_size, rng)
+                        for c in clients]
+            honest = [np.linalg.norm(lw - w) for c, lw in zip(clients, local_ws) if c.client_id not in compromised_ids]
+            target = float(np.mean(honest)) if honest else 0.0
+        for idx, c in enumerate(clients):
             bad = c.client_id in compromised_ids
-            X_use = c.X_attacked if (bad and poison_mode == "data") else c.X_clean
-            w_local = local_dp_sgd(w.copy(), w, X_use, c.y_clean, clips[c.client_id],
-                                    sigma, mu, lr_t, local_steps, batch_size, rng)
+            if match_norm:
+                w_local = local_ws[idx]
+            else:
+                X_use = c.X_attacked if (bad and poison_mode == "data") else c.X_clean
+                w_local = local_dp_sgd(w.copy(), w, X_use, c.y_clean, clips[c.client_id],
+                                        sigma, mu, lr_t, local_steps, batch_size, rng)
             if bad and poison_mode == "gradient":
                 delta_w = w_local - w
+                if match_norm:
+                    delta_w = delta_w * (target / max(np.linalg.norm(delta_w), 1e-12))
                 w_local = w - delta_w
+            if bad and attack_fn is not None:
+                w_local = attack_fn(c.client_id, t, w_local, w)
             if gate_fn is not None and gate_fn(c.client_id, t, w_local, w):
                 n_gated += 1
                 continue
@@ -114,7 +125,6 @@ def run_dp_fedprox_eeg(clients, X_test_aug, y_test, clip_norm_base, sigma, delta
 
 
 def estimate_nu2(clients, batch_size, w=None):
-    """Empirical minibatch-gradient variance (Assumption 6.2's nu^2): Var(per-sample grad) / batch, averaged over clients."""
     per_client_nu2 = []
     for c in clients:
         n = c.X_clean.shape[0]
@@ -127,7 +137,6 @@ def estimate_nu2(clients, batch_size, w=None):
 
 
 def convergence_bound_rhs(F_w0, F_star, eta0, beta, mu, sigma, C_tilde, nu2, d, m, E, T):
-    """Right-hand side of Theorem 6.1: optimization + DP-noise + drift terms with constant eta_0 and no heterogeneity term."""
     opt = 4.0 * (F_w0 - F_star) / (eta0 * E * T)
     noise = 4.0 * beta * E * (nu2 + sigma ** 2 * C_tilde ** 2 * d) / m * eta0
     B_E = eta0 ** 2 * (beta + mu) * C_tilde * (1.0 + sigma * np.sqrt(d)) * E * (E - 1) / 2.0

@@ -1,0 +1,410 @@
+{
+  "cho": {
+    "dataset": "cho",
+    "clean_acc": 0.5662921348314607,
+    "n_clients": 15,
+    "points": [
+      {
+        "n_bad": 1,
+        "frac": 0.0667,
+        "gap_mean": 0.05617977528089888,
+        "gap_std": 0.015995622849485122,
+        "gate_effect_mean": -0.007490636704119887,
+        "gate_effect_std": 0.015277961089416616,
+        "n_gated_total_mean": 122.33333333333333,
+        "gate_precision_mean": 0.06974453620675726,
+        "gate_recall_mean": 0.5777777777777778
+      },
+      {
+        "n_bad": 4,
+        "frac": 0.2667,
+        "gap_mean": 0.07415730337078652,
+        "gap_std": 0.007997811424742573,
+        "gate_effect_mean": -0.03295880149812732,
+        "gate_effect_std": 0.0074153520124431846,
+        "n_gated_total_mean": 113.0,
+        "gate_precision_mean": 0.25309530942520636,
+        "gate_recall_mean": 0.4777777777777778
+      },
+      {
+        "n_bad": 7,
+        "frac": 0.4667,
+        "gap_mean": 0.08689138576779026,
+        "gap_std": 0.015819259986474085,
+        "gate_effect_mean": -0.004494382022471914,
+        "gate_effect_std": 0.021160220062660003,
+        "n_gated_total_mean": 106.66666666666667,
+        "gate_precision_mean": 0.47260280788463294,
+        "gate_recall_mean": 0.4825396825396826
+      },
+      {
+        "n_bad": 10,
+        "frac": 0.6667,
+        "gap_mean": 0.09588014981273409,
+        "gap_std": 0.011652696019553585,
+        "gate_effect_mean": -0.008988764044943828,
+        "gate_effect_std": 0.018070918474628946,
+        "n_gated_total_mean": 108.0,
+        "gate_precision_mean": 0.6694113550414214,
+        "gate_recall_mean": 0.48
+      }
+    ]
+  },
+  "lee": {
+    "dataset": "lee",
+    "clean_acc": 0.4989010989010989,
+    "n_clients": 15,
+    "points": [
+      {
+        "n_bad": 1,
+        "frac": 0.0667,
+        "gap_mean": 0.009523809523809509,
+        "gap_std": 0.02449560951985422,
+        "gate_effect_mean": -0.017582417582417558,
+        "gate_effect_std": 0.0031081616755453054,
+        "n_gated_total_mean": 98.0,
+        "gate_precision_mean": 0.052165549299866616,
+        "gate_recall_mean": 0.3333333333333333
+      },
+      {
+        "n_bad": 4,
+        "frac": 0.2667,
+        "gap_mean": -0.016849816849816845,
+        "gap_std": 0.02614881801842456,
+        "gate_effect_mean": 0.00586080586080584,
+        "gate_effect_std": 0.029064958864289208,
+        "n_gated_total_mean": 97.33333333333333,
+        "gate_precision_mean": 0.2622895622895623,
+        "gate_recall_mean": 0.42777777777777776
+      },
+      {
+        "n_bad": 7,
+        "frac": 0.4667,
+        "gap_mean": -0.015384615384615405,
+        "gap_std": 0.015332197462605378,
+        "gate_effect_mean": -0.008058608058608066,
+        "gate_effect_std": 0.019766648444296066,
+        "n_gated_total_mean": 102.0,
+        "gate_precision_mean": 0.4667569402138603,
+        "gate_recall_mean": 0.45396825396825397
+      },
+      {
+        "n_bad": 10,
+        "frac": 0.6667,
+        "gap_mean": -0.00439560439560438,
+        "gap_std": 0.02937719803042258,
+        "gate_effect_mean": 0.005860805860805858,
+        "gate_effect_std": 0.005768503937004978,
+        "n_gated_total_mean": 102.66666666666667,
+        "gate_precision_mean": 0.6934293728902201,
+        "gate_recall_mean": 0.4711111111111111
+      }
+    ]
+  },
+  "won": {
+    "dataset": "won",
+    "clean_acc": 0.6361111111111111,
+    "n_clients": 15,
+    "points": [
+      {
+        "n_bad": 1,
+        "frac": 0.0667,
+        "gap_mean": 0.11111111111111109,
+        "gap_std": 0.05892556509887896,
+        "gate_effect_mean": -0.03518518518518521,
+        "gate_effect_std": 0.0664089669520041,
+        "n_gated_total_mean": 118.33333333333333,
+        "gate_precision_mean": 0.0549362814175585,
+        "gate_recall_mean": 0.4444444444444445
+      },
+      {
+        "n_bad": 4,
+        "frac": 0.2667,
+        "gap_mean": 0.13796296296296293,
+        "gap_std": 0.06613730158677249,
+        "gate_effect_mean": 0.02777777777777779,
+        "gate_effect_std": 0.018564757088669843,
+        "n_gated_total_mean": 126.33333333333333,
+        "gate_precision_mean": 0.2571374552852874,
+        "gate_recall_mean": 0.5444444444444444
+      },
+      {
+        "n_bad": 7,
+        "frac": 0.4667,
+        "gap_mean": 0.14907407407407405,
+        "gap_std": 0.03516081027045837,
+        "gate_effect_mean": 0.0009259259259258856,
+        "gate_effect_std": 0.034719135665282744,
+        "n_gated_total_mean": 117.66666666666667,
+        "gate_precision_mean": 0.44865056158915806,
+        "gate_recall_mean": 0.5047619047619047
+      },
+      {
+        "n_bad": 10,
+        "frac": 0.6667,
+        "gap_mean": 0.162037037037037,
+        "gap_std": 0.04245145698647277,
+        "gate_effect_mean": -0.013888888888888876,
+        "gate_effect_std": 0.027498597046143523,
+        "n_gated_total_mean": 142.66666666666666,
+        "gate_precision_mean": 0.6827267847927851,
+        "gate_recall_mean": 0.648888888888889
+      }
+    ]
+  },
+  "zhang": {
+    "dataset": "zhang",
+    "clean_acc": 0.5361111111111111,
+    "n_clients": 15,
+    "points": [
+      {
+        "n_bad": 1,
+        "frac": 0.0667,
+        "gap_mean": -0.0009259259259259597,
+        "gap_std": 0.01385799032138497,
+        "gate_effect_mean": 0.0037037037037037277,
+        "gate_effect_std": 0.0111880055311061,
+        "n_gated_total_mean": 142.0,
+        "gate_precision_mean": 0.07066688155617375,
+        "gate_recall_mean": 0.6666666666666666
+      },
+      {
+        "n_bad": 4,
+        "frac": 0.2667,
+        "gap_mean": 0.013888888888888876,
+        "gap_std": 0.01771400599047128,
+        "gate_effect_mean": 0.03148148148148148,
+        "gate_effect_std": 0.02628716586403405,
+        "n_gated_total_mean": 132.0,
+        "gate_precision_mean": 0.24497802956022804,
+        "gate_recall_mean": 0.5388888888888889
+      },
+      {
+        "n_bad": 7,
+        "frac": 0.4667,
+        "gap_mean": 0.010185185185185186,
+        "gap_std": 0.012491423669659305,
+        "gate_effect_mean": 0.020370370370370372,
+        "gate_effect_std": 0.012491423669659297,
+        "n_gated_total_mean": 154.33333333333334,
+        "gate_precision_mean": 0.4588513678755792,
+        "gate_recall_mean": 0.6793650793650795
+      },
+      {
+        "n_bad": 10,
+        "frac": 0.6667,
+        "gap_mean": 0.0222222222222222,
+        "gap_std": 0.029484598755723457,
+        "gate_effect_mean": 0.005555555555555573,
+        "gate_effect_std": 0.027498597046143557,
+        "n_gated_total_mean": 142.33333333333334,
+        "gate_precision_mean": 0.6777687114661627,
+        "gate_recall_mean": 0.64
+      }
+    ]
+  },
+  "wang_eo": {
+    "dataset": "wang_eo",
+    "clean_acc": 0.5266272189349113,
+    "n_clients": 15,
+    "points": [
+      {
+        "n_bad": 1,
+        "frac": 0.0667,
+        "gap_mean": 0.03155818540433928,
+        "gap_std": 0.0073799948457079845,
+        "gate_effect_mean": -0.007889546351084797,
+        "gate_effect_std": 0.010057237699394027,
+        "n_gated_total_mean": 119.33333333333333,
+        "gate_precision_mean": 0.06174211884059371,
+        "gate_recall_mean": 0.48888888888888893
+      },
+      {
+        "n_bad": 4,
+        "frac": 0.2667,
+        "gap_mean": 0.03550295857988167,
+        "gap_std": 0.010529662970445093,
+        "gate_effect_mean": -0.002958579881656801,
+        "gate_effect_std": 0.01278252603236265,
+        "n_gated_total_mean": 113.0,
+        "gate_precision_mean": 0.2827764008615694,
+        "gate_recall_mean": 0.5333333333333333
+      },
+      {
+        "n_bad": 7,
+        "frac": 0.4667,
+        "gap_mean": 0.04832347140039452,
+        "gap_std": 0.02383243781774075,
+        "gate_effect_mean": 0.0019723865877711946,
+        "gate_effect_std": 0.02922195737678312,
+        "n_gated_total_mean": 106.33333333333333,
+        "gate_precision_mean": 0.4629608006672227,
+        "gate_recall_mean": 0.4698412698412698
+      },
+      {
+        "n_bad": 10,
+        "frac": 0.6667,
+        "gap_mean": -0.014792899408283988,
+        "gap_std": 0.012078351788871658,
+        "gate_effect_mean": 0.0019723865877712132,
+        "gate_effect_std": 0.005578751725337681,
+        "n_gated_total_mean": 104.66666666666667,
+        "gate_precision_mean": 0.6572711558850344,
+        "gate_recall_mean": 0.45777777777777784
+      }
+    ]
+  },
+  "wang_ec": {
+    "dataset": "wang_ec",
+    "clean_acc": 0.5072046109510087,
+    "n_clients": 15,
+    "points": [
+      {
+        "n_bad": 1,
+        "frac": 0.0667,
+        "gap_mean": -0.02113352545629199,
+        "gap_std": 0.04441739873850871,
+        "gate_effect_mean": 0.024015369836695482,
+        "gate_effect_std": 0.02356934514195062,
+        "n_gated_total_mean": 91.0,
+        "gate_precision_mean": 0.033146866338716933,
+        "gate_recall_mean": 0.19999999999999998
+      },
+      {
+        "n_bad": 4,
+        "frac": 0.2667,
+        "gap_mean": 0.009606147934678214,
+        "gap_std": 0.02836661490919001,
+        "gate_effect_mean": -0.027857829010566788,
+        "gate_effect_std": 0.011119920175590967,
+        "n_gated_total_mean": 95.33333333333333,
+        "gate_precision_mean": 0.2591065938892026,
+        "gate_recall_mean": 0.41111111111111115
+      },
+      {
+        "n_bad": 7,
+        "frac": 0.4667,
+        "gap_mean": 0.02017291066282421,
+        "gap_std": 0.022446342834866316,
+        "gate_effect_mean": 0.00288184438040349,
+        "gate_effect_std": 0.010256559319914812,
+        "n_gated_total_mean": 102.0,
+        "gate_precision_mean": 0.4886628469830096,
+        "gate_recall_mean": 0.47301587301587295
+      },
+      {
+        "n_bad": 10,
+        "frac": 0.6667,
+        "gap_mean": 0.03266090297790588,
+        "gap_std": 0.0059216272843121915,
+        "gate_effect_mean": 0.009606147934678178,
+        "gate_effect_std": 0.02001216777713705,
+        "n_gated_total_mean": 110.33333333333333,
+        "gate_precision_mean": 0.6736146427352514,
+        "gate_recall_mean": 0.4977777777777778
+      }
+    ]
+  },
+  "cogbci_eo": {
+    "dataset": "cogbci_eo",
+    "clean_acc": 0.5659340659340659,
+    "n_clients": 15,
+    "points": [
+      {
+        "n_bad": 1,
+        "frac": 0.0667,
+        "gap_mean": 0.0192307692307692,
+        "gap_std": 0.03180174973294017,
+        "gate_effect_mean": 0.02197802197802203,
+        "gate_effect_std": 0.0038852020944315922,
+        "n_gated_total_mean": 123.33333333333333,
+        "gate_precision_mean": 0.06714460766420283,
+        "gate_recall_mean": 0.5555555555555555
+      },
+      {
+        "n_bad": 4,
+        "frac": 0.2667,
+        "gap_mean": 0.07326007326007326,
+        "gap_std": 0.013520900238308976,
+        "gate_effect_mean": -0.014652014652014655,
+        "gate_effect_std": 0.009065471553673671,
+        "n_gated_total_mean": 125.66666666666667,
+        "gate_precision_mean": 0.23538333852059343,
+        "gate_recall_mean": 0.4888888888888889
+      },
+      {
+        "n_bad": 7,
+        "frac": 0.4667,
+        "gap_mean": 0.05677655677655676,
+        "gap_std": 0.015268619048107201,
+        "gate_effect_mean": 0.01282051282051283,
+        "gate_effect_std": 0.0239849832485509,
+        "n_gated_total_mean": 111.0,
+        "gate_precision_mean": 0.45110840838188304,
+        "gate_recall_mean": 0.47936507936507927
+      },
+      {
+        "n_bad": 10,
+        "frac": 0.6667,
+        "gap_mean": 0.11630036630036629,
+        "gap_std": 0.07066132499582574,
+        "gate_effect_mean": 0.0027472527472527375,
+        "gate_effect_std": 0.03930268083127277,
+        "n_gated_total_mean": 123.33333333333333,
+        "gate_precision_mean": 0.6301164445674394,
+        "gate_recall_mean": 0.52
+      }
+    ]
+  },
+  "cogbci_ec": {
+    "dataset": "cogbci_ec",
+    "clean_acc": 0.5388888888888889,
+    "n_clients": 15,
+    "points": [
+      {
+        "n_bad": 1,
+        "frac": 0.0667,
+        "gap_mean": 0.031481481481481464,
+        "gap_std": 0.011188005531106103,
+        "gate_effect_mean": 0.021296296296296275,
+        "gate_effect_std": 0.031454236576783354,
+        "n_gated_total_mean": 104.33333333333333,
+        "gate_precision_mean": 0.07732298282756998,
+        "gate_recall_mean": 0.5333333333333333
+      },
+      {
+        "n_bad": 4,
+        "frac": 0.2667,
+        "gap_mean": 0.020370370370370334,
+        "gap_std": 0.03242063222224372,
+        "gate_effect_mean": -0.006481481481481459,
+        "gate_effect_std": 0.034866982192153236,
+        "n_gated_total_mean": 103.0,
+        "gate_precision_mean": 0.2869812066240638,
+        "gate_recall_mean": 0.49444444444444446
+      },
+      {
+        "n_bad": 7,
+        "frac": 0.4667,
+        "gap_mean": 0.03981481481481478,
+        "gap_std": 0.0340458820571301,
+        "gate_effect_mean": -0.016666666666666663,
+        "gate_effect_std": 0.018564757088669902,
+        "n_gated_total_mean": 105.66666666666667,
+        "gate_precision_mean": 0.4464234838066614,
+        "gate_recall_mean": 0.44761904761904764
+      },
+      {
+        "n_bad": 10,
+        "frac": 0.6667,
+        "gap_mean": 0.05925925925925921,
+        "gap_std": 0.031454236576783395,
+        "gate_effect_mean": 0.009259259259259245,
+        "gate_effect_std": 0.045662325947918365,
+        "n_gated_total_mean": 103.0,
+        "gate_precision_mean": 0.6668274426952664,
+        "gate_recall_mean": 0.4577777777777778
+      }
+    ]
+  }
+}

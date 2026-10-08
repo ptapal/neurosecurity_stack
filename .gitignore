@@ -10,3 +10,4 @@ data/
 *.fls
 *.fdb_latexmk
 *.synctex.gz
+plots/

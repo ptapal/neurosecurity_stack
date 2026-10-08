@@ -1,17 +1,6 @@
-"""Lag-1 autocorrelation of the alpha-power embedding z_t over the chronological trial sequence, per cohort.
-
-Conditions of paper Table 11: 15 subjects per cohort, the first max_trials trials per subject (200 for Cho and
-Lee, 150 otherwise), mean over channels. Wang and COG-BCI skip their epoch shuffle and Zhang sorts trials by
-run and sample position (ordered=True), so the sequence is chronological. Cho was recorded with randomized
-left/right instructions but is released as one block per class with no index of the original order, so the
-interleaved sequence cannot be recovered; its value is the lag-1 autocorrelation of each class block (trials in
-stored order), averaged over the two blocks.
-
-Won and Zhang epochs (0.8 s) are cut around stimuli presented about every 0.1 s, so consecutive epochs share
-samples and their alpha power is correlated by construction. non_overlap restricts the statistic to pairs of
-consecutive trials whose epochs do not overlap in time (same run, onset gap of at least one epoch length). For the
-other cohorts epochs never overlap, so non_overlap equals sequence.
-"""
+# ORDERED cohorts load trials in chronological (not shuffled) order. Cho has no original-order index, so its
+# value is per-class-block autocorrelation. Won/Zhang epochs overlap in time by construction; non_overlap_mask
+# restricts to pairs that don't.
 import numpy as np
 
 from cohort import select_subjects
@@ -22,7 +11,6 @@ ORDERED = {"zhang", "wang_eo", "wang_ec", "cogbci_eo", "cogbci_ec"}
 
 
 def lag1_autocorr(z, pair_mask=None):
-    """Mean lag-1 autocorrelation across channels, z shape (n_windows, r); pair_mask selects the (n-1) pairs used."""
     if z.shape[0] < 3:
         return np.nan
     if pair_mask is None:

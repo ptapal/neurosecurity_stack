@@ -1,9 +1,3 @@
-"""Compare Theorem 8.1's detection power (beta_A), the Neyman-Pearson bound (beta*) and the unwhitened
-detector (beta_B) against measured Pillar 3 power, per cohort and sigma.
-
-Baseline covariance is fit on pre-noise calibration data, as in detect.fit_baseline.
-Usage: python -m analyses.bound_check <cohort>
-"""
 import json
 import sys
 
@@ -24,6 +18,7 @@ def prep_dataset(name, n_subjects=15, seed=0):
     prep = []
     for sub in load_subjects(name, n_subjects):
         calib_i, thresh_i, clean_i, atk_i, test_i = split_idx(len(sub.trials), rng)
+        ema_i, _ = np.array_split(thresh_i, 2)
         z = encode(sub.trials, FS)
         atk_trials = inject_alpha(sub.trials, FS, strength=0.5, rng=rng)
         z_atk = encode(atk_trials, FS)
@@ -32,6 +27,7 @@ def prep_dataset(name, n_subjects=15, seed=0):
         prep.append(dict(
             z_calib=z[calib_i],
             z_thresh_s=standardize(z[thresh_i], mu, std),
+            z_ema_s=standardize(z[ema_i], mu, std),
             z_atk_s=standardize(z_atk[atk_i], mu, std),
         ))
 
@@ -41,7 +37,7 @@ def prep_dataset(name, n_subjects=15, seed=0):
     bases, mu1s, calibs = [], [], []
     for p in prep:
         b = fit_baseline(p["z_calib"], clip_norm=clip, ridge=RIDGE)
-        b.mu = ema_settle(clip_l2(p["z_thresh_s"], clip), b.mu, gamma=EMA_GAMMA)
+        b.mu = ema_settle(clip_l2(p["z_ema_s"], clip), b.mu, gamma=EMA_GAMMA)
         bases.append(b)
         mu1s.append(clip_l2(p["z_atk_s"], clip).mean(axis=0))
         calibs.append(p["z_calib"])
@@ -49,7 +45,6 @@ def prep_dataset(name, n_subjects=15, seed=0):
 
 
 def quad_form_moments(M, Sigma, delta):
-    """Exact mean/variance of S = w^T M w, w ~ N(delta, Sigma)."""
     MSigma = M @ Sigma
     mean = np.trace(MSigma) + delta @ M @ delta
     var = 2 * np.trace(MSigma @ MSigma) + 4 * delta @ M @ Sigma @ M @ delta
@@ -61,18 +56,18 @@ def per_subject_bounds(mu0, mu1, Sigma_hat, sigma, alpha0=ALPHA0):
     Sigma_eta = Sigma_hat + sigma**2 * np.eye(r)
     delta = mu1 - mu0
 
-    # beta*: Neyman-Pearson optimal power
+    # beta*
     lam = delta @ np.linalg.solve(Sigma_eta, delta)
     beta_star = norm.cdf(np.sqrt(max(lam, 0)) - norm.ppf(1 - alpha0))
 
-    # beta_A: whitened Mahalanobis detector, Theorem 8.1
+    # beta_A
     M_A = np.linalg.inv(Sigma_hat)
     m0, v0 = quad_form_moments(M_A, Sigma_eta, np.zeros(r))
     m1, v1 = quad_form_moments(M_A, Sigma_eta, delta)
     tau_A = m0 + np.sqrt(max(v0, 1e-12)) * norm.ppf(1 - alpha0)
     beta_A = norm.cdf((m1 - tau_A) / np.sqrt(max(v1, 1e-12)))
 
-    # beta_B: unwhitened L2 detector (M = I)
+    # beta_B
     M_B = np.eye(r)
     m0b, v0b = quad_form_moments(M_B, Sigma_eta, np.zeros(r))
     m1b, v1b = quad_form_moments(M_B, Sigma_eta, delta)

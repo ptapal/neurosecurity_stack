@@ -1,9 +1,3 @@
-"""Hanson-Wright power lower bound as a non-asymptotic alternative to Theorem 8.1's moment-matched CLT.
-
-P(|S - E[S]| > t) <= 2 exp(-c min(t^2/(K^4 ||A||_F^2), t/(K^2 ||A||_op))), A = M Sigma_eta, with the explicit
-constant c = 1/8 (Wainwright 2019). K is the sub-Gaussian norm of the whitened calibration residuals.
-Usage: python -m analyses.hw_check <cohort> <sigma>
-"""
 import sys
 
 import numpy as np
@@ -13,8 +7,6 @@ from config import ALPHA0
 
 C_HW = 1.0 / 8.0
 
-# max_p p^{-1/2} (E|X|^p)^{1/p} equals ~0.707 for N(0,1), but the exact psi_2 norm is sqrt(8/3);
-# the estimator is only equivalent up to a constant, so rescale by the Gaussian reference.
 _GAUSSIAN_TRUE_PSI2 = np.sqrt(8.0 / 3.0)
 
 

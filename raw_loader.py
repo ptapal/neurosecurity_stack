@@ -52,6 +52,7 @@ LEE_CH = [
 ]
 LEE_FS = 1000
 LEE_SAMPS = 4000
+LEE_N_EEG = 62
 
 WON_MAP = {
     "FP1": "Fp1", "AF3": "AF3", "F7": "F7", "F3": "F3",
@@ -79,7 +80,7 @@ ZHANG_RENAME = {
 }
 ZHANG_FS = 1000.0
 ZHANG_PRE, ZHANG_POST = 0.1, 0.7
-# code 2 is the rare target, code 1 is common non-target (checked against real trigger counts)
+# code 2 is the rare target, code 1 is common non-target 
 ZHANG_TARGET = 2
 ZHANG_NONTARGET = 1
 
@@ -95,6 +96,7 @@ class SubjectData:
     labels: np.ndarray
     times: np.ndarray | None = None
     runs: np.ndarray | None = None
+    baseline: np.ndarray | None = None
 
 
 def _filt(raw):
@@ -364,3 +366,240 @@ def list_won_subjects():
 def list_zhang_subjects():
     d = ROOT / "zhang"
     return sorted((p.stem for p in d.glob("S*.mat")), key=lambda s: int(s[1:]))
+
+
+def _clean_epochs(X, fs, names, onsets_samps, pre_s, task_s, out_fs=FS_OUT):
+    from preprocess import clean_continuous
+    d, _ = clean_continuous(X, fs, names, out_fs=out_fs, keep=CH32)
+    return d
+
+
+def _robust_keep(task, k):
+    peak = np.abs(task).max(axis=(1, 2))
+    med = np.median(peak)
+    mad = 1.4826 * np.median(np.abs(peak - med))
+    return peak <= med + k * mad
+
+
+def load_cho_subject_clean(subject_id, max_trials=200, peak_uv=3.0):
+    path = ROOT / "cho" / f"{subject_id}.mat"
+    mat = scipy.io.loadmat(str(path), simplify_cells=True)
+    eeg = mat["eeg"]
+    n_trials = int(eeg["n_imagery_trials"])
+    frame = np.array(eeg["frame"], dtype=np.int32)
+    pre = int(abs(int(frame[0])) * CHO_FS // 1000)
+    from preprocess import clean_continuous
+
+    trials, bases, labels = [], [], []
+    for cls, key in enumerate(("imagery_left", "imagery_right")):
+        data = np.array(eeg[key], dtype=np.float64)[:CHO_N_EEG]
+        d, _ = clean_continuous(data, CHO_FS, CHO_CH, out_fs=FS_OUT, keep=CH32)
+        total = data.shape[1] // n_trials
+        total_r = round(total * FS_OUT / CHO_FS)
+        pre_r = round(pre * FS_OUT / CHO_FS)
+        img_r = round(CHO_IMG_SAMPS * FS_OUT / CHO_FS)
+        ep = d[:, :n_trials * total_r].reshape(d.shape[0], n_trials, total_r)
+        trials.append(ep[:, :, pre_r:pre_r + img_r])
+        bases.append(ep[:, :, :pre_r])
+        labels.append(np.full(n_trials, cls, dtype=np.int64))
+
+    task = np.concatenate(trials, axis=1).transpose(1, 0, 2)
+    base = np.concatenate(bases, axis=1).transpose(1, 0, 2)
+    y = np.concatenate(labels)
+    keep = _robust_keep(task, peak_uv)
+    task, base, y = task[keep], base[keep], y[keep]
+    if max_trials is not None:
+        task, base, y = task[:max_trials], base[:max_trials], y[:max_trials]
+    return SubjectData(subject_id, "cho", task.astype(np.float32), y, baseline=base.astype(np.float32))
+
+
+def load_lee_subject_clean(subject_id, session="session1", max_trials=200, peak_uv=3.0):
+    from preprocess import clean_continuous
+    idx = int(subject_id.split("-")[-1])
+    mat = scipy.io.loadmat(str(_lee_path(session, idx)), simplify_cells=True)
+    samps = round(LEE_SAMPS * FS_OUT / LEE_FS)
+    pre = int(round(2.0 * FS_OUT))
+    tasks, bases, ys = [], [], []
+    for key in ("EEG_MI_train", "EEG_MI_test"):
+        x = np.array(mat[key]["x"], dtype=np.float64).T[:LEE_N_EEG]
+        onsets = np.array(mat[key]["t"], dtype=np.int64).ravel()
+        y_dec = np.array(mat[key]["y_dec"], dtype=np.int64).ravel()
+        d, _ = clean_continuous(x, LEE_FS, LEE_CH, out_fs=FS_OUT, keep=CH32)
+        on = np.round(onsets * FS_OUT / LEE_FS).astype(np.int64)
+        for o, lab in zip(on, y_dec - 1):
+            if o - pre < 0 or o + samps > d.shape[1]:
+                continue
+            tasks.append(d[:, o:o + samps])
+            bases.append(d[:, o - pre:o])
+            ys.append(lab)
+    task = np.stack(tasks)
+    base = np.stack(bases)
+    y = np.array(ys, dtype=np.int64)
+    keep = _robust_keep(task, peak_uv)
+    task, base, y = task[keep], base[keep], y[keep]
+    if max_trials is not None:
+        task, base, y = task[:max_trials], base[:max_trials], y[:max_trials]
+    return SubjectData(subject_id, "lee", task.astype(np.float32), y, baseline=base.astype(np.float32))
+
+
+def _clean_mod():
+    from preprocess import clean_continuous
+    return clean_continuous
+
+
+def load_won_subject_clean(subject_id, max_trials=150, seed=0, k=3.0):
+    clean = _clean_mod()
+    sub_dir = ROOT / "won" / subject_id
+    set_file = sub_dir / "eeg" / f"{subject_id}_task-RSVPtask_run-3_eeg.set"
+    raw = mne.io.read_raw_eeglab(str(set_file), preload=True, verbose=False)
+    raw.rename_channels({kk: v for kk, v in WON_MAP.items() if kk in raw.ch_names})
+    raw.pick_channels([c for c in CH32 if c in raw.ch_names], ordered=True)
+    sf = raw.info["sfreq"]
+    events, _ = mne.events_from_annotations(raw, verbose=False)
+    tgt = events[events[:, 2] == 1]
+    ntg = events[events[:, 2] == 2]
+    rng = np.random.default_rng(seed)
+    n_keep = min(len(ntg), len(tgt) * 2)
+    ntg = ntg[rng.choice(len(ntg), size=n_keep, replace=False)]
+    all_ev = np.concatenate([tgt, ntg], axis=0)
+    all_ev = all_ev[np.argsort(all_ev[:, 0])]
+    X = raw.get_data() * 1e6
+    d, _ = clean(X, sf, raw.ch_names, out_fs=FS_OUT, keep=None)
+    scale = FS_OUT / sf
+    pre = int(round(WON_PRE * FS_OUT))
+    post = int(round(WON_POST * FS_OUT))
+    trials, ys, tms = [], [], []
+    for s0, code in zip(all_ev[:, 0], all_ev[:, 2]):
+        o = int(round(s0 * scale))
+        if o - pre < 0 or o + post > d.shape[1]:
+            continue
+        w = d[:, o - pre:o + post]
+        w = w - w[:, :pre].mean(axis=1, keepdims=True)
+        trials.append(w)
+        ys.append(1 if code == 1 else 0)
+        tms.append(s0 / sf)
+    ep = np.stack(trials)
+    y = np.array(ys, dtype=np.int64)
+    tms = np.array(tms)
+    keep = _robust_keep(ep, k)
+    ep, y, tms = ep[keep], y[keep], tms[keep]
+    if max_trials is not None:
+        ep, y, tms = ep[:max_trials], y[:max_trials], tms[:max_trials]
+    return SubjectData(subject_id, "won", ep.astype(np.float32), y, times=tms,
+                       runs=np.zeros(len(y), dtype=np.int64))
+
+
+def load_zhang_subject_clean(subject_id, day="Day_1", max_trials=150, seed=0, ordered=False, k=3.0):
+    clean = _clean_mod()
+    path = ROOT / "zhang" / f"{subject_id}.mat"
+    names = [ZHANG_RENAME.get(c, c) for c in ZHANG_CH]
+    trials, labels, times, runs = [], [], [], []
+    pre_s = int(round(ZHANG_PRE * FS_OUT))
+    post_s = int(round(ZHANG_POST * FS_OUT))
+    with h5py.File(str(path), "r") as f:
+        for run, ref in enumerate(f[day][:, 0]):
+            mat = f[ref][:]
+            eeg = mat[:, :57].T.astype(np.float64)
+            trig = mat[:, 57]
+            d, _ = clean(eeg, ZHANG_FS, names, out_fs=FS_OUT, keep=CH32)
+            scale = FS_OUT / ZHANG_FS
+            for code, lab in ((ZHANG_TARGET, 1), (ZHANG_NONTARGET, 0)):
+                for pos in np.where(trig == code)[0]:
+                    o = int(round(pos * scale))
+                    if o - pre_s < 0 or o + post_s > d.shape[1]:
+                        continue
+                    trials.append(d[:, o - pre_s:o + post_s])
+                    labels.append(lab)
+                    times.append(pos)
+                    runs.append(run)
+    ep = np.stack(trials)
+    y = np.array(labels, dtype=np.int64)
+    rng = np.random.default_rng(seed)
+    tgt_idx = np.where(y == 1)[0]
+    ntg_idx = np.where(y == 0)[0]
+    n_keep = min(len(ntg_idx), len(tgt_idx) * 2)
+    ntg_idx = rng.choice(ntg_idx, size=n_keep, replace=False)
+    keep = np.sort(np.concatenate([tgt_idx, ntg_idx]))
+    if ordered:
+        keep = keep[np.lexsort((np.array(times)[keep], np.array(runs)[keep]))]
+    ep, y = ep[keep], y[keep]
+    runs = np.array(runs)[keep]
+    keep2 = _robust_keep(ep, k)
+    times = np.array(times)[keep] / ZHANG_FS
+    ep, y, runs, times = ep[keep2], y[keep2], runs[keep2], times[keep2]
+    if max_trials is not None:
+        ep, y, runs, times = ep[:max_trials], y[:max_trials], runs[:max_trials], times[:max_trials]
+    return SubjectData(subject_id, "zhang", ep.astype(np.float32), y, times=times, runs=runs)
+
+
+def _clean_resting(raw, k=3.0):
+    clean = _clean_mod()
+    d, _ = clean(raw.get_data() * 1e6, raw.info["sfreq"], raw.ch_names, out_fs=FS_OUT, keep=CH32)
+    return d
+
+
+def _load_wang_cond_clean(subject_id, task, tag, max_trials, seed, ordered, k=3.0):
+    base = ROOT / "wang" / subject_id / "ses-session1" / "eeg"
+    vhdr = base / f"{subject_id}_ses-session1_task-{task}_eeg.vhdr"
+    raw = mne.io.read_raw_brainvision(str(vhdr), preload=True, verbose=False)
+    d = _clean_resting(raw, k)
+    ep = _epoch_continuous(d, FS_OUT)
+    n = ep.shape[0]
+    half = n // 2
+    y = np.concatenate([np.zeros(half, dtype=np.int64), np.ones(n - half, dtype=np.int64)])
+    keep = _robust_keep(ep, k)
+    ep, y = ep[keep], y[keep]
+    if not ordered:
+        idx = np.random.default_rng(seed).permutation(len(y))
+        ep, y = ep[idx], y[idx]
+    if max_trials is not None:
+        ep, y = ep[:max_trials], y[:max_trials]
+    return SubjectData(subject_id, tag, ep.astype(np.float32), y)
+
+
+def load_wang_eo_subject_clean(subject_id, max_trials=150, seed=0, ordered=False):
+    return _load_wang_cond_clean(subject_id, "eyesopen", "wang_eo", max_trials, seed, ordered)
+
+
+def load_wang_ec_subject_clean(subject_id, max_trials=150, seed=0, ordered=False):
+    return _load_wang_cond_clean(subject_id, "eyesclosed", "wang_ec", max_trials, seed, ordered)
+
+
+def _load_cogbci_cond_clean(subject_id, cond, tag, max_trials, seed, ordered, k=3.0):
+    base = ROOT / "cogbci" / subject_id
+    trials, labels = [], []
+    for pos, lab in (("Beg", 0), ("End", 1)):
+        for set_path in sorted(base.rglob(f"RS_{pos}_*.set")):
+            if not set_path.stem.upper().endswith(cond):
+                continue
+            raw = mne.io.read_raw_eeglab(str(set_path), preload=True, verbose=False)
+            d = _clean_resting(raw, k)
+            ep = _epoch_continuous(d, FS_OUT)
+            trials.append(ep)
+            labels.append(np.full(ep.shape[0], lab, dtype=np.int64))
+    pooled = np.concatenate(trials, axis=0)
+    y = np.concatenate(labels)
+    keep = _robust_keep(pooled, k)
+    pooled, y = pooled[keep], y[keep]
+    if not ordered:
+        idx = np.random.default_rng(seed).permutation(len(y))
+        pooled, y = pooled[idx], y[idx]
+    if max_trials is not None:
+        pooled, y = pooled[:max_trials], y[:max_trials]
+    return SubjectData(subject_id, tag, pooled.astype(np.float32), y)
+
+
+def load_cogbci_eo_subject_clean(subject_id, max_trials=150, seed=0, ordered=False):
+    return _load_cogbci_cond_clean(subject_id, "EO", "cogbci_eo", max_trials, seed, ordered)
+
+
+def load_cogbci_ec_subject_clean(subject_id, max_trials=150, seed=0, ordered=False):
+    return _load_cogbci_cond_clean(subject_id, "EC", "cogbci_ec", max_trials, seed, ordered)
+
+
+CLEAN_LOADERS = {
+    "cho": load_cho_subject_clean, "lee": load_lee_subject_clean, "won": load_won_subject_clean,
+    "zhang": load_zhang_subject_clean, "wang_eo": load_wang_eo_subject_clean,
+    "wang_ec": load_wang_ec_subject_clean, "cogbci_eo": load_cogbci_eo_subject_clean,
+    "cogbci_ec": load_cogbci_ec_subject_clean,
+}

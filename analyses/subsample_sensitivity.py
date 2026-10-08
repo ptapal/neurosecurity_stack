@@ -1,11 +1,3 @@
-"""Sensitivity of the Pillar 2 and 3 sigma sweep to which 15 subjects are drawn.
-
-Each cohort with more than 15 subjects is redrawn n_draws times with seeds 1000 + d, and the sweep is
-rerun on every draw. Zhang has exactly 15 subjects, so it has no alternative draw. Needs the full datasets.
-
-Usage: python -m analyses.subsample_sensitivity [--draws 10] [--cohorts cho lee ...]
-Writes results/subsample_sensitivity.json.
-"""
 import argparse
 import json
 
@@ -13,7 +5,7 @@ import numpy as np
 
 from cohort import prep_subject, select_subjects
 from config import COHORTS, DATASETS, RESULTS_DIR
-from run_simulation import run_pillars_2_3
+from run_simulation import run_sigma_sweep
 
 N_SUBJECTS = 15
 METRICS = ("epsilon", "maha_power", "l2_power", "sig_far", "sig_frr")
@@ -32,7 +24,7 @@ def run(name, n_draws):
                 cache[sid] = load_fn(sid, max_trials=max_trials)
         rng = np.random.default_rng(d)
         prep = [prep_subject(cache[sid], rng) for sid in chosen]
-        sweep, _ = run_pillars_2_3(prep, rng)
+        sweep, _ = run_sigma_sweep(prep, rng)
         draws.append({"subjects": chosen, **{m: [row[m] for row in sweep] for m in METRICS}})
         print(f"  {name} draw {d + 1}/{n_draws}", flush=True)
     return {"sigma": [row["sigma"] for row in sweep], "draws": draws}
